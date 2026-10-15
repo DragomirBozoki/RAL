@@ -1,0 +1,81 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v7
+      - run: uv sync --extra dev --python 3.12
+      - run: uv run ruff check .
+      - run: uv run ruff format --check .
+
+  test:
+    name: test (${{ matrix.os }}, py${{ matrix.python }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, ubuntu-24.04-arm, windows-latest]
+        python: ["3.10", "3.12"]
+        include:
+          # M0 acceptance requires installing on macOS; one job is enough.
+          - os: macos-latest
+            python: "3.12"
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v7
+      - name: Install the system PortAudio library (Linux)
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends libportaudio2
+      - run: uv sync --all-extras --python ${{ matrix.python }}
+      - run: uv run mypy src
+      - run: uv run pytest
+      - run: uv run ral --version
+
+  pip-install:
+    name: pip install (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.10"
+      - run: python -m pip install .
+      - name: Core import works without optional dependencies
+        run: python -c "import ral; print(ral.__version__)" && ral --version
+
+  licences:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v7
+      - run: uv sync --extra dev --python 3.12
+      - name: Install only the core into a clean environment
+        run: |
+          uv venv --python 3.12 .core-venv
+          uv pip install --python .core-venv/bin/python .
+      - name: Check core dependency licences
+        run: |
+          uv run pip-licenses --python .core-venv/bin/python --from=mixed --format=json \
+            | uv run python scripts/check_licenses.py

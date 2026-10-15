@@ -1,0 +1,95 @@
+[build-system]
+requires = ["hatchling>=1.25"]
+build-backend = "hatchling.build"
+
+[project]
+name = "ral-audio"
+dynamic = ["version"]
+description = "Robot Audio Layer: a vendor-neutral audio layer for robots"
+readme = "README.md"
+license = "Apache-2.0"
+license-files = ["LICENSE", "NOTICE"]
+authors = [{ name = "The RAL Authors" }]
+requires-python = ">=3.10"
+classifiers = [
+    "Development Status :: 2 - Pre-Alpha",
+    "Intended Audience :: Developers",
+    "Intended Audience :: Science/Research",
+    "Operating System :: Microsoft :: Windows",
+    "Operating System :: POSIX :: Linux",
+    "Operating System :: MacOS",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Multimedia :: Sound/Audio",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+    "Typing :: Typed",
+]
+# Core dependencies must be permissively licensed (see CONTRIBUTING.md).
+dependencies = [
+    "numpy>=1.26",   # BSD-3-Clause
+    "typer>=0.12",   # MIT
+    "rich>=13.7",    # MIT
+]
+
+[project.optional-dependencies]
+audio = [
+    "sounddevice>=0.5", # MIT; Linux also needs the system PortAudio library (libportaudio2)
+]
+dsp = [
+    "livekit>=1.0",     # Apache-2.0; WebRTC APM. TODO(M1): add onnxruntime for Silero VAD
+]
+# TODO(M1): add pyroomacoustics to dev once simulated-room tests exist.
+dev = [
+    "mypy>=1.10",
+    "pip-licenses>=5.0",
+    "pre-commit>=3.7",
+    "pytest>=8.2",
+    "pytest-asyncio>=0.23",
+    "ruff>=0.5",
+]
+
+[project.scripts]
+ral = "ral.cli.main:app"
+
+[tool.hatch.version]
+path = "src/ral/__init__.py"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/ral"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+src = ["src", "tests"]
+
+[tool.ruff.format]
+# Code blocks in docs are aligned by hand for reading.
+exclude = ["*.md"]
+
+[tool.ruff.lint]
+select = ["E", "W", "F", "I", "B", "UP", "SIM", "RUF", "NPY", "PT", "TID"]
+
+[tool.mypy]
+python_version = "3.10"
+files = ["src"]
+warn_unused_configs = true
+warn_unused_ignores = true
+warn_redundant_casts = true
+check_untyped_defs = true
+disallow_untyped_defs = true
+
+[[tool.mypy.overrides]]
+module = ["ral.core.*", "ral.dsp.*"]
+strict = true
+
+[tool.pytest.ini_options]
+minversion = "8.0"
+testpaths = ["tests"]
+# Hardware tests are skipped by default; run them with `pytest -m hardware`
+# (a later -m on the command line replaces this one).
+addopts = ["-ra", "--strict-markers", "-m", "not hardware"]
+markers = ["hardware: needs real audio devices; skipped by default"]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
+xfail_strict = true

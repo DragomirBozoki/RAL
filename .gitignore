@@ -1,0 +1,35 @@
+# Personal and secret files
+CLAUDE.local.md
+.env
+.env.*
+!.env.example
+
+# Recordings may contain people's voices; never commit them
+recordings/
+*.mcap
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+.venv/
+.core-venv/
+.python-version
+
+# Tool caches
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Editors and OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Spike outputs (results go into the script headers instead)
+spikes/out/
