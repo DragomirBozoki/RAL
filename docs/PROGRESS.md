@@ -8,9 +8,9 @@ See `docs/DESIGN.md` section 10.
 |---|---|---|
 | 1 | Scaffolding, tooling, CI | done |
 | 2 | Core types, errors, conversions | done |
-| 3 | RingBuffer and Framer | in review |
-| 4 | DeviceBackend protocol and FileBackend | next |
-| 5 | PortAudioBackend | |
+| 3 | RingBuffer and Framer | done |
+| 4 | DeviceBackend protocol and FileBackend | in review |
+| 5 | PortAudioBackend | next |
 | 6 | `ral doctor` v0 | |
 | 7 | Spike: WebRTC APM standalone, ERLE on synthetic echo | |
 
@@ -26,6 +26,10 @@ See `docs/DESIGN.md` section 10.
   `drop_oldest` and `drop_newest` overrun policies, overrun and underrun counters) and
   `ral.core.Framer` (exact 10 ms frames, `t_ns` from the sample count, jitter-tolerant
   re-anchoring, `seq` gaps for lost audio). Tests with a fake clock and a real producer thread.
+- **Step 4.** `AudioSource`, `AudioSink`, `DeviceBackend` protocols (`ral.core.protocols`);
+  `ral.core.clock.now_ns()`; `ral.devices.FileBackend` with `FileSource` and `FileSink`
+  (16-bit PCM WAV, fast or realtime, render hooks, silence on underrun, `drop_newest`).
+  Round trip bit-exact for int16 and float32 frames. Spike `spikes/clock_resolution.py`.
 
 ## Decisions
 
@@ -55,6 +59,15 @@ See `docs/DESIGN.md` section 10.
   least one frame (nearest whole frame, ties down). Re-anchor after 3 consecutive
   observations beyond 2 ms, or at once after a gap. Underruns count only partial reads
   (`read_available`, for sinks); a Framer waiting for data is not an underrun.
+- 2026-10-15 (step 4): all timestamps come from `ral.core.clock.now_ns()`; on Windows before
+  Python 3.13 it is `perf_counter_ns` because `monotonic` has 15.6 ms steps there (spike).
+  CLAUDE.md rule 5 and DESIGN section 5 updated. Option B (keep `monotonic_ns`) rejected:
+  Windows timing numbers would be meaningless.
+- 2026-10-15 (step 4): `FileBackend` takes `{name: path}` maps for sources and sinks; device
+  ids are `file:in:<name>` and `file:out:<name>`. Source `fmt` must match the file's rate and
+  channels; `dtype` may be `int16` (unchanged) or `float32` (converted). Realtime sources
+  deliver a frame once its last sample is due; realtime sinks render every 10 ms from a
+  `drop_newest` ring buffer. Render hooks get samples in the sink's dtype.
 - 2026-10-15: Python 3.10 tests run locally in a separate env
   (`UV_PROJECT_ENVIRONMENT=.venv310 uv run --python 3.10 --all-extras pytest`), so the main
   `.venv` stays on 3.12. `.venv*/` is ignored.
@@ -72,4 +85,4 @@ See `docs/DESIGN.md` section 10.
 
 ## Next
 
-Step 4: `DeviceBackend` protocol and `FileBackend`.
+Step 5: `PortAudioBackend` (check that PortAudio's stream time on Windows is QPC-based).
