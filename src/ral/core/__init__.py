@@ -8,6 +8,8 @@ from ral.core.errors import (
     MissingDependencyError,
     RalError,
 )
+from ral.core.framer import Framer
+from ral.core.ringbuffer import Anchor, OverrunPolicy, ReadResult, RingBuffer
 from ral.core.types import (
     AudioFormat,
     AudioFrame,
@@ -18,6 +20,7 @@ from ral.core.types import (
 )
 
 __all__ = [
+    "Anchor",
     "AudioFormat",
     "AudioFrame",
     "ChannelMap",
@@ -26,8 +29,12 @@ __all__ = [
     "DeviceInfo",
     "DeviceNotFoundError",
     "FormatError",
+    "Framer",
     "MissingDependencyError",
+    "OverrunPolicy",
     "RalError",
+    "ReadResult",
+    "RingBuffer",
     "SampleDtype",
     "float32_to_int16",
     "int16_to_float32",

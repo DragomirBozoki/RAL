@@ -336,6 +336,7 @@ A reference that reaches the echo canceller after its echo cannot be cancelled. 
 ### Clocks, delay and drift
 
 - Every capture frame carries `t_ns` (ADC time estimate); every rendered block carries its estimated DAC time. The echo delay is the gap between a sample leaving the DAC and its echo reaching the ADC.
+- The Framer stamps frames from the sample count (`t_anchor + samples / rate`), not from each callback, so callback jitter never reaches `t_ns`. Callback timestamps are observations: the timeline re-anchors only when it disagrees with them by more than a threshold (2 ms) for several observations in a row (3), or at the first disagreement after a gap. Frames sit on a fixed grid of the absolute sample index, so `seq` jumps by exactly the frames lost to an overrun (capture drops the oldest samples) or to a forward time jump of at least one frame; a hole in `seq` always means missing audio.
 - PortAudio reports `inputBufferAdcTime` and `outputBufferDacTime` in its callbacks; the backend maps them to `time.monotonic_ns()`. Some host APIs report zeros, so the fallback is callback time minus (or plus) the stream's reported latency.
 - The probe measures the initial delay; a GCC-PHAT estimator tracks it online and updates the alignment when it moves.
 - When capture and playback are different devices or boards, their sample clocks disagree by some parts per million. `DriftEstimator` measures it from sample counts against monotonic time, and the `ReferenceBuffer` resamples the reference onto the mic clock with a slowly varying ratio.

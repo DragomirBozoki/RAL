@@ -7,9 +7,9 @@ See `docs/DESIGN.md` section 10.
 | Step | What | Status |
 |---|---|---|
 | 1 | Scaffolding, tooling, CI | done |
-| 2 | Core types, errors, conversions | in review |
-| 3 | RingBuffer and Framer | next |
-| 4 | DeviceBackend protocol and FileBackend | |
+| 2 | Core types, errors, conversions | done |
+| 3 | RingBuffer and Framer | in review |
+| 4 | DeviceBackend protocol and FileBackend | next |
 | 5 | PortAudioBackend | |
 | 6 | `ral doctor` v0 | |
 | 7 | Spike: WebRTC APM standalone, ERLE on synthetic echo | |
@@ -22,6 +22,10 @@ See `docs/DESIGN.md` section 10.
 - **Step 2.** `ral.core`: `AudioFormat`, `ChannelRole`, `ChannelMap`, `AudioFrame` (validated on
   construction), `DeviceInfo`, the `RalError` hierarchy (`FormatError`, `DeviceError`,
   `DeviceNotFoundError`, `MissingDependencyError`), int16 and float32 conversion.
+- **Step 3.** `ral.core.RingBuffer` (preallocated, absolute sample indices, block anchors,
+  `drop_oldest` and `drop_newest` overrun policies, overrun and underrun counters) and
+  `ral.core.Framer` (exact 10 ms frames, `t_ns` from the sample count, jitter-tolerant
+  re-anchoring, `seq` gaps for lost audio). Tests with a fake clock and a real producer thread.
 
 ## Decisions
 
@@ -44,15 +48,28 @@ See `docs/DESIGN.md` section 10.
 - 2026-10-15: `AudioFormat.dtype` is typed `Literal["int16", "float32"]` and checked at runtime;
   added `frame_ns` and `numpy_dtype` properties, and `ChannelMap.from_names`, `uniform`,
   `indices`. `DeviceInfo.extra` is left out of the hash so `DeviceInfo` stays hashable.
+- 2026-10-15 (step 3): `RingBuffer` uses a short `threading.Lock`, because `drop_oldest`
+  lets the producer move the read index. Anchors live in a fixed FIFO (default 1024).
+- 2026-10-15 (step 3): `t_ns` uses integer nanoseconds; frames sit on a grid of the absolute
+  sample index and `seq` is the grid index plus frames skipped for forward time jumps of at
+  least one frame (nearest whole frame, ties down). Re-anchor after 3 consecutive
+  observations beyond 2 ms, or at once after a gap. Underruns count only partial reads
+  (`read_available`, for sinks); a Framer waiting for data is not an underrun.
+- 2026-10-15: Python 3.10 tests run locally in a separate env
+  (`UV_PROJECT_ENVIRONMENT=.venv310 uv run --python 3.10 --all-extras pytest`), so the main
+  `.venv` stays on 3.12. `.venv*/` is ignored.
 - 2026-10-15: Errors that match a builtin also subclass it (`FormatError` is a `ValueError`,
   `MissingDependencyError` an `ImportError`), so generic handlers still catch them.
 
 ## Open questions
 
+- M1: if the timeline re-anchors backwards by a frame or more, `t_ns` can go backwards. Rare
+  (a very late first callback), and the M1 delay-locked loop should remove it; until then
+  it is counted in `reanchors` only.
 - M1: should `AudioSource` gain a blocking `read(timeout)` for the DSP worker thread, or stay
   async-only (DESIGN section 4 vs section 9 threading model)?
 - ROS 2 part of `ral doctor` can only be verified on a machine with ROS 2 (Ubuntu dual boot).
 
 ## Next
 
-Step 3: `RingBuffer` and `Framer` in `ral.core`.
+Step 4: `DeviceBackend` protocol and `FileBackend`.
