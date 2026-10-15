@@ -6,9 +6,9 @@ See `docs/DESIGN.md` section 10.
 
 | Step | What | Status |
 |---|---|---|
-| 1 | Scaffolding, tooling, CI | in review |
-| 2 | Core types, errors, conversions | next |
-| 3 | RingBuffer and Framer | |
+| 1 | Scaffolding, tooling, CI | done |
+| 2 | Core types, errors, conversions | in review |
+| 3 | RingBuffer and Framer | next |
 | 4 | DeviceBackend protocol and FileBackend | |
 | 5 | PortAudioBackend | |
 | 6 | `ral doctor` v0 | |
@@ -19,6 +19,9 @@ See `docs/DESIGN.md` section 10.
 - **Step 1.** `pyproject.toml` (hatchling, src layout, extras `audio`, `dsp`, `dev`),
   `ral --version`, LICENSE, NOTICE, README, CONTRIBUTING, ruff, mypy and pytest config
   (hardware marker skipped by default), pre-commit, GitHub Actions CI with a licence check.
+- **Step 2.** `ral.core`: `AudioFormat`, `ChannelRole`, `ChannelMap`, `AudioFrame` (validated on
+  construction), `DeviceInfo`, the `RalError` hierarchy (`FormatError`, `DeviceError`,
+  `DeviceNotFoundError`, `MissingDependencyError`), int16 and float32 conversion.
 
 ## Decisions
 
@@ -36,6 +39,13 @@ See `docs/DESIGN.md` section 10.
   must be divisible by 100; PortAudio opens devices at their native rate (WASAPI shared mode);
   render hooks must be real-time safe; a full sink buffer drops the frame and counts an
   overrun; the last partial WAV frame is zero-padded; PortAudio timestamp smoothing is M1.
+- 2026-10-15: int16 and float32 conversion scales by 32768 both ways, rounds half to even,
+  clips, and maps NaN to 0. Every int16 value round-trips bit-exact.
+- 2026-10-15: `AudioFormat.dtype` is typed `Literal["int16", "float32"]` and checked at runtime;
+  added `frame_ns` and `numpy_dtype` properties, and `ChannelMap.from_names`, `uniform`,
+  `indices`. `DeviceInfo.extra` is left out of the hash so `DeviceInfo` stays hashable.
+- 2026-10-15: Errors that match a builtin also subclass it (`FormatError` is a `ValueError`,
+  `MissingDependencyError` an `ImportError`), so generic handlers still catch them.
 
 ## Open questions
 
@@ -45,4 +55,4 @@ See `docs/DESIGN.md` section 10.
 
 ## Next
 
-Step 2: core types in `ral.core`.
+Step 3: `RingBuffer` and `Framer` in `ral.core`.

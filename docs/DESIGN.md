@@ -116,6 +116,8 @@ class AudioFormat:
     channels: int
     dtype: str                 # "int16" | "float32"
     frame_ms: int = 10         # WebRTC APM requires exactly 10 ms frames
+    # Validated on construction: sample_rate * frame_ms must be a multiple of 1000,
+    # so with 10 ms frames the rate must be divisible by 100 (44.1 and 48 kHz work, 22.05 does not).
 
     @property
     def frame_samples(self) -> int:
@@ -130,7 +132,9 @@ class ChannelMap:
 
 @dataclass
 class AudioFrame:
-    data: np.ndarray           # shape (fmt.frame_samples, fmt.channels)
+    # Validated on construction (shape, dtype, channel count). Before the Normalizer a frame
+    # keeps the device's native rate and dtype; after it, float32 at the engine rate.
+    data: np.ndarray           # shape (fmt.frame_samples, fmt.channels), dtype fmt.dtype
     fmt: AudioFormat
     channel_map: ChannelMap
     t_ns: int                  # monotonic estimate: first sample at the ADC (capture) or DAC (playback)
@@ -303,7 +307,7 @@ Echo control picks one of four modes from what the hardware offers. The engine's
 ### Capture chain
 
 1. **Backend** delivers raw blocks in the device's native format (for example 6 channels of 16-bit PCM from a HAL topic, or 2 channels from a USB card).
-2. **Framer** cuts blocks into exact 10 ms frames and stamps each with `t_ns`.
+2. **Framer** cuts blocks into exact 10 ms frames in the device's native rate and dtype and stamps each with `t_ns`.
 3. **Normalizer** converts to float32, resamples to the engine rate (16 kHz default, 48 kHz optional) and applies the channel map. Reference channels are resampled with the same settings as the mics.
 4. **Echo controller** removes the robot's own audio using the mode below. In v0.1 it runs on one selected mic channel (`echo.mic`, an index or `mean`); multi-channel AEC comes later. Raw channels still go to the recorder.
 5. **Noise suppression and gain control** clean the residual.
