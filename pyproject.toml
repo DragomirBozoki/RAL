@@ -42,7 +42,10 @@ dsp = [
     "livekit>=1.0",      # Apache-2.0; WebRTC APM (echo, noise, gain)
     "onnxruntime>=1.17", # MIT; Silero VAD. 1.23 is the last release with CPython 3.10 wheels
 ]
-# TODO(M1): add pyroomacoustics to dev once simulated-room tests exist.
+record = [
+    "mcap>=1.1",         # MIT; session recordings readable in Foxglove
+]
+# TODO(M2): add pyroomacoustics to dev once simulated-room tests exist.
 dev = [
     "mypy>=1.10",
     "pip-licenses>=5.0",

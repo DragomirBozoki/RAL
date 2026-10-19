@@ -24,6 +24,11 @@ def run(
     duration: float = typer.Option(0.0, help="Stop after this many seconds (0: run until Ctrl-C)."),
     play: Path | None = typer.Option(None, help="Play this WAV file through RAL once started."),
     json_events: bool = typer.Option(False, "--json", help="Print events as JSON lines."),
+    record: bool | None = typer.Option(
+        None,
+        "--record/--no-record",
+        help="Record the session to MCAP (default: the profile's recording.enabled, off).",
+    ),
     verbose: bool = typer.Option(False, "--verbose", "-v", help="Show engine log messages."),
 ) -> None:
     """Run RAL: capture, echo control, VAD and barge-in, playback, bridges."""
@@ -36,7 +41,7 @@ def run(
         console.print(f"[red]{exc}[/red]")
         raise typer.Exit(2) from None
     try:
-        asyncio.run(_run(prof, duration, play, json_events))
+        asyncio.run(_run(prof, duration, play, json_events, record))
     except KeyboardInterrupt:
         pass
     except RalError as exc:
@@ -44,14 +49,16 @@ def run(
         raise typer.Exit(1) from None
 
 
-async def _run(prof: object, duration: float, play: Path | None, json_events: bool) -> None:
+async def _run(
+    prof: object, duration: float, play: Path | None, json_events: bool, record: bool | None
+) -> None:
     from ral.engine.engine import Engine
     from ral.playback.clip import load_wav
     from ral.playback.service import audio_frames
     from ral.profiles.schema import Profile
 
     assert isinstance(prof, Profile)
-    engine = Engine(prof)
+    engine = Engine(prof, record=record)
     events = engine.bus.subscribe()
     async with engine:
         t0 = now_ns()

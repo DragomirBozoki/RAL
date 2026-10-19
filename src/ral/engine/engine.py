@@ -26,8 +26,9 @@ from pathlib import Path
 from typing import Any
 
 from ral.core.bus import EventBus
+from ral.core.clock import now_ns
 from ral.core.errors import ConfigError, RalError
-from ral.core.events import BargeIn, Event
+from ral.core.events import BargeIn, Event, RecordingStarted, RecordingStopped
 from ral.core.processing import Processor
 from ral.core.protocols import AudioSink, AudioSource
 from ral.core.types import AudioFormat, AudioFrame, ChannelMap
@@ -97,9 +98,17 @@ class Engine:
     """
 
     def __init__(
-        self, profile: Profile, *, session_id: str | None = None, portaudio: Any = None
+        self,
+        profile: Profile,
+        *,
+        session_id: str | None = None,
+        portaudio: Any = None,
+        record: bool | None = None,
     ) -> None:
         self.profile = profile
+        self.record = profile.recording.enabled if record is None else record
+        self.recorder: Any = None
+        self._record_task: asyncio.Task[None] | None = None
         self.session_id = session_id or uuid.uuid4().hex[:12]
         self.engine_fmt = AudioFormat(profile.engine.rate, 1, "float32")
         self.bus = EventBus()
@@ -173,6 +182,8 @@ class Engine:
             engine_rate=self.engine_fmt.sample_rate,
         )
         self._remove_listener = self.bus.add_listener(self._on_event)
+        if self.record:
+            self._start_recorder()
 
         await sink.start()
         await playback.start()
@@ -190,6 +201,12 @@ class Engine:
 
     async def stop(self) -> None:
         """Stop capture, processing and playback, and close devices."""
+        try:
+            await self._stop()
+        finally:
+            await self._stop_recorder()
+
+    async def _stop(self) -> None:
         if self._capture_task is not None:
             self._capture_task.cancel()
             with contextlib.suppress(asyncio.CancelledError):
@@ -364,3 +381,43 @@ class Engine:
     def _on_event(self, event: Event) -> None:
         if isinstance(event, BargeIn) and self.playback is not None:
             self.playback.interrupt()
+        if self.recorder is not None:
+            self.recorder.write_event(event)
+
+    # Recording (opt-in; DESIGN section 8, "Privacy")
+
+    def _start_recorder(self) -> None:
+        from ral.record.mcap import McapRecorder
+
+        cfg = self.profile.recording
+        path = Path(cfg.path) / f"ral-{self.session_id}.mcap"
+        self.recorder = McapRecorder(
+            path,
+            session_id=self.session_id,
+            profile=self.profile.model_dump(mode="json"),
+            raw=cfg.raw,
+        )
+        self.recorder.start()
+        sub = self.subscribe(maxsize=1000)
+
+        async def pump() -> None:
+            async for result in sub:
+                self.recorder.write_result(result.raw, result.clean, result.ctx.reference)
+
+        self._record_task = asyncio.create_task(pump(), name="ral-recorder-pump")
+        self.bus.publish(RecordingStarted(now_ns(), self.session_id, path=str(path)))
+        log.info("Recording to %s", path)
+
+    async def _stop_recorder(self) -> None:
+        if self.recorder is None:
+            return
+        if self._record_task is not None:
+            await asyncio.wait({self._record_task}, timeout=2.0)
+            self._record_task.cancel()
+            self._record_task = None
+        self.recorder.write_event(
+            RecordingStopped(now_ns(), self.session_id, path=str(self.recorder.path))
+        )
+        await asyncio.get_running_loop().run_in_executor(None, self.recorder.stop)
+        if self.recorder.dropped:
+            log.warning("Recorder dropped %d messages (disk too slow)", self.recorder.dropped)

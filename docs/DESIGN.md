@@ -480,7 +480,7 @@ Recording turns RAL from glue code into a tool: the same session can be replayed
 
 ### What a session contains
 
-One MCAP file per session with channels for raw mic, reference, processed audio, playback, VAD and barge-in events, transcripts and model timings when bridges report them, the active profile, and host information. Audio is stored as PCM chunks with a small described format (encoding, rate, channels, roles); check whether Foxglove's raw-audio schema fits and prefer it so recordings play back in Foxglove. Transcripts and events are JSON.
+One MCAP file per session with channels for raw mic, reference, processed audio, playback, VAD and barge-in events, transcripts and model timings when bridges report them, the active profile, and host information. Audio is stored as Foxglove's `foxglove.RawAudio` (JSON schema, `pcm-s16`, base64 data; one message per 10 ms frame), so recordings play back in Foxglove; channel roles and the clock id go in the MCAP channel metadata. `spikes/mcap_rawaudio.py` measured a bit-exact round trip and about 2 MB per minute per mono 16 kHz channel with zstd chunks. v0.1 channels: `/ral/mic` (normalized capture, all channels, before echo control), `/ral/reference` (what echo control was fed), `/ral/clean` and `/ral/events`; metadata records hold the session, host, profile and the RAL-clock-to-wall-time mapping at the start. Log times are RAL clock values. A writer thread does the file I/O. Transcripts and events are JSON. TODO(M2): transcripts and model timings from bridges, and a protobuf audio channel if size matters.
 
 ### Replay modes
 

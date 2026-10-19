@@ -17,8 +17,8 @@ and `ral models fetch` for the Silero model.
 | 7 | Silero VAD | done |
 | 8 | Barge-in and self-trigger metric | done |
 | 9 | `Engine` and `ral run` | done |
-| 10 | MCAP recorder | next |
-| 11 | WebSocket bridge | |
+| 10 | MCAP recorder | done |
+| 11 | WebSocket bridge | next |
 | 12 | LiveKit bridge | |
 | 13 | Latency report and demo recording | |
 
@@ -72,6 +72,12 @@ and `ral models fetch` for the Silero model.
   `--json`, `--duration`); `load_wav`. Found on the way: offline capture lost frames (now
   waits instead of dropping, including the end marker); `PlaybackQueue.wait()` now returns
   at the DAC end time; a stalled producer ends at once when stopped; YAML `off` is a bool.
+- **Step 10.** `ral.record.mcap` (`McapRecorder` with a writer thread, `foxglove.RawAudio`
+  JSON channels `/ral/mic`, `/ral/reference`, `/ral/clean`, plus `/ral/events` and session,
+  host and profile metadata; `read_recording`); engine and `ral run --record` (off by
+  default, `RecordingStarted` and `RecordingStopped`). `record` extra: `mcap` (MIT, with lz4
+  and zstandard, BSD). Spike `spikes/mcap_rawaudio.py`: bit-exact, 1.94 MB per minute per
+  mono channel. Fixed a flaky M0 PortAudio test (fake clock taken before the loop).
 
 ### M1 decisions
 

@@ -287,10 +287,13 @@ async def test_sink_renders_written_frames_then_silence_to_the_hooks(
     tone = np.full((480, 2), 0.5, dtype=np.float32)
     sink.write(AudioFrame(tone, fmt, ChannelMap.uniform(2), 0, 0, "agent"))
 
-    now = pa_now()
-    for k in range(3):  # three 300-sample device blocks: 480 samples of tone, then silence
+    first = None
+    for _ in range(3):  # three 300-sample device blocks: 480 samples of tone, then silence
         out = np.full((300, 2), 9.0, dtype=np.float32)
-        t = now + k * 300 / 48000
+        # currentTime is the real time of the callback, as PortAudio reports it; a time
+        # taken before the loop would drift from the RAL clock when the host is busy.
+        t = pa_now()
+        first = t if first is None else first
         stream.callback(out, 300, time_info(t, dac=t + 0.010), flags())
     await sink.stop()
 
@@ -298,7 +301,8 @@ async def test_sink_renders_written_frames_then_silence_to_the_hooks(
     assert np.array_equal(played[:480], tone)
     assert not played[480:].any()
     dac_times = [t for _, t in seen]
-    assert abs(dac_times[0] - round((now + 0.010) * 1e9)) < MS
+    assert first is not None
+    assert abs(dac_times[0] - round((first + 0.010) * 1e9)) < MS
     assert all(b > a for a, b in itertools.pairwise(dac_times))
     assert sink.output_latency_ns() == 20 * MS
 
