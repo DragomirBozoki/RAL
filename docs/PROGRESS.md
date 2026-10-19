@@ -284,6 +284,9 @@ Two acceptance items wait for the maintainer: the PortAudio record and play hard
 - M1: if the timeline re-anchors backwards by a frame or more, `t_ns` can go backwards. Rare
   (a very late first callback), and the M1 delay-locked loop should remove it; until then
   it is counted in `reanchors` only.
+- Watch: CI failed once on `test (ubuntu-24.04-arm, py3.12)` for the LiveKit commit
+  (28b44b1) and passed on the next commit; logs need a login, so failing tests are now also
+  printed as `::error` annotations, which the public run page shows.
 - Watch: one local test run hung once in step 9 and could not be reproduced in 6 more
   runs. `faulthandler_timeout = 120` dumps every thread if it happens again; CI jobs time
   out after 15 minutes.
