@@ -10,7 +10,13 @@ from ral.core.errors import (
     RalError,
 )
 from ral.core.framer import Framer
-from ral.core.protocols import AudioSink, AudioSource, DeviceBackend, RenderHook
+from ral.core.protocols import (
+    AudioSink,
+    AudioSource,
+    DeviceBackend,
+    ReferenceProvider,
+    RenderHook,
+)
 from ral.core.ringbuffer import Anchor, OverrunPolicy, ReadResult, RingBuffer
 from ral.core.types import (
     AudioFormat,
@@ -40,6 +46,7 @@ __all__ = [
     "OverrunPolicy",
     "RalError",
     "ReadResult",
+    "ReferenceProvider",
     "RenderHook",
     "RingBuffer",
     "SampleDtype",

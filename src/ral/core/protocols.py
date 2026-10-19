@@ -14,7 +14,7 @@ import numpy.typing as npt
 
 from ral.core.types import AudioFormat, AudioFrame, ChannelMap, DeviceInfo
 
-__all__ = ["AudioSink", "AudioSource", "DeviceBackend", "RenderHook"]
+__all__ = ["AudioSink", "AudioSource", "DeviceBackend", "ReferenceProvider", "RenderHook"]
 
 RenderHook = Callable[[npt.NDArray[Any], int], None]
 """``hook(samples, t_dac_ns)``: a block handed to the device and when it plays."""
@@ -80,3 +80,18 @@ class DeviceBackend(Protocol):
     ) -> AudioSource: ...
 
     def open_sink(self, device: DeviceInfo, fmt: AudioFormat) -> AudioSink: ...
+
+
+@runtime_checkable
+class ReferenceProvider(Protocol):
+    """What was played, as 10 ms frames on the engine clock and rate.
+
+    ``push`` runs on the output thread (it is a render hook) and must only copy.
+    ``frames_until`` runs on the DSP thread.
+    """
+
+    def push(self, samples: npt.NDArray[Any], t_dac_ns: int) -> None: ...
+
+    def frames_until(self, t_ns: int) -> list[AudioFrame]:
+        """Every buffered frame whose DAC time is earlier than ``t_ns``, oldest first."""
+        ...

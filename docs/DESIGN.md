@@ -277,7 +277,7 @@ class Bridge(Protocol):
 | `RingBuffer`, `Framer` | Single-producer, single-consumer buffers per stream; turn device blocks of any size into exact 10 ms frames with timestamps | numpy-backed |
 | `Doctor` | Read-only host scan and report | `HostScanner`, `PortAudioScanner`, `Ros2GraphScanner`, `DdsCheck`, `ClockSyncCheck` |
 | `Prober` | Active tests that write a profile | `SweepProbe`, `NoiseFloorProbe`, `DriftProbe`, `ProfileWriter` |
-| `ReferenceBuffer` | Implements `ReferenceProvider`: stores rendered audio with DAC timestamps, resamples it onto the mic clock | One per engine |
+| `ReferenceBuffer` | Implements `ReferenceProvider`: stores rendered audio with DAC timestamps (framed from the sample count like capture), downmixes it to mono, resamples it onto the mic rate and clock | One per engine |
 | Clock sync | Delay and drift between playback and capture | `DelayEstimator` (GCC-PHAT), `DriftEstimator`, adaptive resampling |
 | Processors | Stages of the capture graph | `Normalizer`, `EchoController` (`WebRtcAec`, `HardwareAecPassthrough`, `DuplexGate`), `NoiseSuppressor`, `Agc`, `Vad` (Silero ONNX, energy fallback), `BargeInDetector` |
 | `PlaybackService` | Queue, priorities, fades, ducking | `PlaybackQueue`, `Mixer`, `SinkWriter` |

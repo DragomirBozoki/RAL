@@ -9,8 +9,8 @@ and `ral models fetch` for the Silero model.
 | Step | What | Status |
 |---|---|---|
 | 1 | Normalizer and resampler | done |
-| 2 | `ReferenceBuffer` | next |
-| 3 | Events and `EventBus` | |
+| 2 | `ReferenceBuffer` | done |
+| 3 | Events and `EventBus` | next |
 | 4 | Playback service | |
 | 5 | Echo controllers (`software_ref`, `gate`) | |
 | 6 | Noise suppression, high-pass, AGC; energy VAD | |
@@ -28,6 +28,9 @@ and `ral models fetch` for the Silero model.
   -85 dB error and -90 dB aliasing, about 100 us per 10 ms frame at 48 kHz) and
   `ral.dsp.normalizer.Normalizer` (float32, engine rate, `unused` channels dropped, output
   frames inherit input `t_ns` and `seq`, gaps flush the resampler).
+- **Step 2.** `ReferenceProvider` protocol in `ral.core`; `ral.playback.ReferenceBuffer`
+  (render hook copies into a Framer; DSP side reframes, downmixes to mono and resamples to
+  the engine rate; `frames_until(t)` hands out frames by DAC time).
 
 ### M1 decisions
 
