@@ -1,8 +1,8 @@
 # Progress
 
-## Current milestone: M0, Foundations
+## Current milestone: M0, Foundations (code complete; waiting for review and CI)
 
-See `docs/DESIGN.md` section 10.
+See `docs/DESIGN.md` section 10. M1 is proposed under "Next" and not started.
 
 | Step | What | Status |
 |---|---|---|
@@ -12,7 +12,7 @@ See `docs/DESIGN.md` section 10.
 | 4 | DeviceBackend protocol and FileBackend | done |
 | 5 | PortAudioBackend | done (hardware record and play tests to be run by the maintainer) |
 | 6 | `ral doctor` v0 | done (ROS 2 part to be verified on Ubuntu) |
-| 7 | Spike: WebRTC APM standalone, ERLE on synthetic echo | next |
+| 7 | Spike: WebRTC APM standalone, ERLE on synthetic echo | done |
 
 ## Done
 
@@ -41,6 +41,24 @@ See `docs/DESIGN.md` section 10.
   `Ros2Scanner` (RMW, domain ID, localhost-only and discovery-server variables, audio-like
   topics with types and publisher QoS). Rich tables or `--json`; exit 1 on errors.
   Shared test fakes in `tests/fakes/` (pytest `pythonpath = ["tests"]`).
+- **Step 7.** `spikes/apm_feasibility.py`: LiveKit APM standalone at 16 kHz / 10 ms on a
+  synthetic scene. 36-42 dB ERLE for 5-120 ms echo delays with the reference on time; the
+  stream-delay hint changes ERLE by under 1 dB; a reference 30 ms late drops ERLE to 7 dB
+  (5 ms echo); APM output lags its input by 8 ms (14 ms with NS); 150-250 us per frame.
+  Double talk costs the near-end talker 7-10 dB. Full table and meaning in the header.
+
+## M0 acceptance (DESIGN section 10)
+
+| Criterion | State |
+|---|---|
+| Installs with pip and uv on Linux, Windows and macOS | uv and the 3.10 env verified on Windows; Linux and macOS through CI, not run yet |
+| CI green on Linux x86_64, Linux arm64 and Windows | not run yet: nothing has been pushed |
+| Framer tests pass for random block sizes | yes |
+| `FileBackend` round trip is bit-exact | yes (int16 and float32, 1 to 6 channels) |
+| On a laptop, `ral doctor` lists devices | yes, on the maintainer's Windows laptop |
+| PortAudio hardware test records and plays | discovery test run; record and play tests waiting for the maintainer |
+| With ROS 2 sourced, doctor lists audio-like topics with types and QoS | tested with a fake graph; needs a ROS 2 machine |
+| The APM spike reports ERLE for several delays | yes |
 
 ## Decisions
 
@@ -93,6 +111,9 @@ See `docs/DESIGN.md` section 10.
 - 2026-10-19 (step 5): PortAudio input overflow and output underflow flags are counted
   (`input_overflows`, `output_underflows`); the sink's `buffer.underruns` also counts idle
   silence until the M1 playback service can tell idle from starved.
+- 2026-10-19 (step 7): default `lead` is 20 ms and the stream-delay hint stays `lead`
+  (DESIGN section 5). The echo controller must shift clean-frame `t_ns` by the APM's output
+  lag (8 ms with AEC at 16 kHz, 14 ms with NS); DESIGN section 5 updated.
 - 2026-10-15: Python 3.10 tests run locally in a separate env
   (`UV_PROJECT_ENVIRONMENT=.venv310 uv run --python 3.10 --all-extras pytest`), so the main
   `.venv` stays on 3.12. `.venv*/` is ignored.
@@ -107,7 +128,40 @@ See `docs/DESIGN.md` section 10.
 - M1: should `AudioSource` gain a blocking `read(timeout)` for the DSP worker thread, or stay
   async-only (DESIGN section 4 vs section 9 threading model)?
 - ROS 2 part of `ral doctor` can only be verified on a machine with ROS 2 (Ubuntu dual boot).
+- Re-run `spikes/portaudio_time.py` on Linux (ALSA, PipeWire) and macOS to confirm the clock
+  offset mapping there.
+- M1: Silero VAD model distribution (bundle the MIT-licensed ONNX file, about 2 MB, or an
+  explicit `ral models fetch`), and which real speech clips may go into `tests/data`.
 
 ## Next
 
-Step 7: APM feasibility spike.
+M0 review, then M1 once approved. Proposed M1 steps (each with tests, one commit, and a
+stop for review):
+
+1. Normalizer (`ral/dsp/normalizer.py`): int16 to float32, resampling to 16 kHz with
+   `samplerate` (new core dependency, MIT), channel map applied. Tests: tone accuracy, exact
+   frame counts over random rates, state carried across frames.
+2. `ReferenceBuffer` (`ral/playback/reference.py`): render-hook input with DAC times,
+   resampled onto the mic rate, `frames_until(t)`. Tests with `FileSink` and fake times.
+3. Events and `EventBus` (`ral/core/events.py`, `ral/core/bus.py`): frozen dataclasses, JSON
+   `{"type": ...}`, asyncio pub/sub.
+4. Playback service (`ral/playback/`): priority queue, interruptible items, 20-50 ms fades,
+   ducking, `PlaybackStarted` at the DAC time, sink writer. Tests on `FileSink`.
+5. Echo controllers (`ral/dsp/echo.py`): `WebRtcAec` for `software_ref` (lead, hint, output
+   lag) and `DuplexGate` for `gate`. CI test on synthetic echo: ERLE above a floor, and the
+   late-reference case must fail.
+6. Noise suppression, high-pass filter and AGC through the APM; energy VAD.
+7. Silero VAD with onnxruntime (`dsp` extra), 512-sample windows stamped with capture time.
+8. Barge-in (`vad+dtd`, echo-leak guard) and the self-trigger metric; CI test that
+   `software_ref` lowers the self-trigger rate against no AEC.
+9. `Engine` with the DSP worker thread and `ral run` (a minimal profile: pydantic and
+   PyYAML), end to end on `FileBackend`.
+10. MCAP recorder (`record` extra), after a spike on Foxglove's raw-audio schema.
+11. WebSocket bridge (binary PCM and JSON control).
+12. LiveKit bridge, after a spike joining a local LiveKit server.
+13. Per-turn latency report; the 2-minute demo recording on the laptop.
+
+New dependencies to approve with their steps: samplerate (MIT), onnxruntime (MIT), mcap
+(MIT), livekit-api (Apache-2.0), pydantic (MIT), PyYAML (MIT), and for the WebSocket bridge
+either fastapi with uvicorn (MIT, BSD) as DESIGN section 9 says, or the smaller websockets
+(BSD).
