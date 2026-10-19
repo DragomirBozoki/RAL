@@ -496,7 +496,7 @@ One MCAP file per session with channels for raw mic, reference, processed audio,
 
 | Metric | Definition | Why it matters |
 |---|---|---|
-| Turn latency | End of user speech to first robot audio at the DAC, split into VAD hangover, STT final, model first token, TTS first audio and playback start | Shows which stage to fix |
+| Turn latency | End of user speech to first robot audio at the DAC, split into VAD hangover, STT final, model first token, TTS first audio and playback start. v0.1 (`LatencyTracker`, a `TurnLatency` event per turn, summary at the end of `ral run`) measures hangover (until RAL decided the user finished), agent (until the reply's first audio reached RAL) and playback (until the DAC); bridges that report model timings will split the agent stage | Shows which stage to fix |
 | Self-trigger rate | VAD speech starts during the robot's own playback that no real user speech explains, per minute of playback | The "robot answers itself" bug as one number |
 | ERLE | Echo return loss enhancement in dB during robot-only speech | Standard AEC quality measure |
 | Barge-in precision and recall | Against labelled sessions | Interrupts when it should, ignores itself |

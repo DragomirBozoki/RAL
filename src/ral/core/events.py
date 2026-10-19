@@ -31,6 +31,7 @@ __all__ = [
     "RecordingStopped",
     "SpeechEnded",
     "SpeechStarted",
+    "TurnLatency",
     "WordSpoken",
     "Xrun",
     "event_from_json",
@@ -156,6 +157,23 @@ class RecordingStopped(Event):
     """Recording ended."""
 
     path: str
+
+
+@dataclass(frozen=True)
+class TurnLatency(Event):
+    """How long one turn took, from the end of user speech to robot audio at the DAC.
+
+    ``t_ns`` is the end of the user's speech. The stages add up to ``total_ms``:
+    ``hangover_ms`` (VAD hangover plus processing until RAL decided the user had finished),
+    ``agent_ms`` (from that decision until the reply's first audio reached RAL) and
+    ``playback_ms`` (from there until that audio was at the DAC).
+    """
+
+    total_ms: float
+    hangover_ms: float
+    agent_ms: float
+    playback_ms: float
+    tag: str
 
 
 def event_to_json(event: Event) -> dict[str, Any]:

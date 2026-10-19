@@ -24,6 +24,9 @@ def run(
     duration: float = typer.Option(0.0, help="Stop after this many seconds (0: run until Ctrl-C)."),
     play: Path | None = typer.Option(None, help="Play this WAV file through RAL once started."),
     json_events: bool = typer.Option(False, "--json", help="Print events as JSON lines."),
+    echo: str | None = typer.Option(
+        None, "--echo", help="Override the echo mode: software_ref, gate or off."
+    ),
     bridge: list[str] = typer.Option(
         [], "--bridge", "-b", help="Also start this bridge with default settings (repeatable)."
     ),
@@ -46,6 +49,11 @@ def run(
     try:
         for name in bridge:
             prof.bridges.setdefault(name, {})
+        if echo is not None:
+            if echo not in ("software_ref", "gate", "off"):
+                console.print(f"[red]--echo must be software_ref, gate or off, not {echo!r}[/red]")
+                raise typer.Exit(2)
+            prof.echo.mode = echo  # type: ignore[assignment]
         asyncio.run(_run(prof, duration, play, json_events, record))
     except KeyboardInterrupt:
         pass
@@ -97,6 +105,8 @@ async def _run(
             events.close()
             with contextlib.suppress(asyncio.CancelledError):
                 await task
+            if not json_events:
+                _print_latency(engine)
 
 
 def _print_event(event: Event, t0: int, as_json: bool) -> None:
@@ -109,3 +119,20 @@ def _print_event(event: Event, t0: int, as_json: bool) -> None:
     t = (data.pop("t_ns") - t0) / 1e9
     extra = " ".join(f"{k}={v}" for k, v in data.items() if not k.endswith("_ns"))
     console.print(f"{t:8.3f}s  [bold]{name}[/bold] {extra}")
+
+
+def _print_latency(engine: object) -> None:
+    from rich.table import Table
+
+    from ral.engine.engine import Engine
+
+    assert isinstance(engine, Engine)
+    stats = engine.latency.summary()
+    if not stats:
+        return
+    table = Table(title=f"Turn latency over {len(engine.latency.turns)} turns (ms)")
+    for col in ("stage", "median", "p90"):
+        table.add_column(col)
+    for st in stats:
+        table.add_row(st.name, f"{st.median_ms:.0f}", f"{st.p90_ms:.0f}")
+    console.print(table)

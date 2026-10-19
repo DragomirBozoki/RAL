@@ -1,6 +1,6 @@
 # Progress
 
-## Current milestone: M1, echo-free conversation on a laptop (v0.1)
+## Current milestone: M1, echo-free conversation on a laptop (v0.1): code complete, waiting for the laptop demo
 
 See `docs/DESIGN.md` section 10. Approved 2026-10-19: all 13 steps in a row (commit and
 push after each), every new dependency in the plan, `websockets` for the WebSocket bridge,
@@ -20,7 +20,7 @@ and `ral models fetch` for the Silero model.
 | 10 | MCAP recorder | done |
 | 11 | WebSocket bridge | done |
 | 12 | LiveKit bridge | done |
-| 13 | Latency report and demo recording | next |
+| 13 | Latency report and demo recording | done (demo recording waits for the maintainer) |
 
 ### M1 done
 
@@ -90,6 +90,45 @@ and `ral models fetch` for the Silero model.
   --dev` 1.13.10 passed locally (`RAL_TEST_LIVEKIT_URL`, skipped in CI). Spike
   `spikes/livekit_room.py`: 10 ms frames both ways, about 64 ms through a local room.
   Example profile and instructions in `examples/livekit_agent/`.
+- **Step 13.** `ral.metrics.latency.LatencyTracker` and the `TurnLatency` event (total =
+  hangover + agent + playback, from bus events only); the engine publishes one per turn and
+  `ral run` prints median and p90 per stage at the end; `ral run --echo MODE` overrides the
+  profile for A/B listening.
+
+### M1 acceptance (DESIGN section 10)
+
+| Criterion | State |
+|---|---|
+| A LiveKit agent talks through `ral run` on a laptop with speaker and mic without answering itself | bridge tested against `livekit-server --dev` with a scripted agent; a real agent on the laptop waits for the maintainer |
+| Synthetic-echo tests in CI show `software_ref` lowering the self-trigger rate against no AEC and report ERLE | yes: 31 vs 4.4 self-triggers per minute; ERLE 44 dB at 5 to 120 ms delay; a late reference fails as it must |
+| Every turn produces a latency breakdown | yes (`TurnLatency`, tested end to end on the file backend) |
+| A 2-minute demo recording exists | waits for the maintainer (commands below) |
+
+### Maintainer tasks (laptop with speaker and mic)
+
+1. M0 hardware tests: `uv run pytest -m hardware`. Expect 3 passed (discovery, a short
+   recording, a short tone).
+2. Echo control without an agent, two runs, wearing no headphones:
+
+   ```bash
+   uv sync --all-extras
+   uv run ral models fetch silero_vad
+   uv run ral run --profile laptop --play tests/data/speech_16k.wav --duration 12 --echo off
+   uv run ral run --profile laptop --play tests/data/speech_16k.wav --duration 12
+   ```
+
+   Expected: with `--echo off` the robot hears its own clip (`SpeechStarted` lines while it
+   plays, possibly a `BargeIn` that cuts it off). With the default `software_ref` there
+   should be no `SpeechStarted` while it plays unless you talk; talking over it gives one
+   `BargeIn` and `PlaybackEnded ... interrupted=True`.
+3. Demo with a LiveKit agent (see `examples/livekit_agent/README.md`), recorded:
+
+   ```bash
+   uv run ral run --profile examples/livekit_agent/laptop_livekit.yaml --record --duration 120
+   ```
+
+   The recording lands in `recordings/ral-<session>.mcap` (open it in Foxglove); the turn
+   latency table prints at the end. Recordings are ignored by git.
 
 ### M1 decisions
 
@@ -105,6 +144,20 @@ and `ral models fetch` for the Silero model.
 - 2026-10-19 (step 7): Silero VAD v6.2.3 instead of v5 (latest release, same interface,
   MIT). Test speech comes from the silero-vad repository (MIT), which answers the open
   question about real speech clips for now.
+
+## Next: proposed M2 (robots and measurement, v0.2), not started
+
+Following DESIGN section 10, each step with tests, one commit and a stop for review:
+
+1. `ral bench` and offline replay of MCAP recordings through another configuration
+   (side-by-side ERLE, self-trigger rate, barge-in and latency).
+2. Simulated-room tests (pyroomacoustics, MIT) for every echo mode in CI.
+3. `ral probe`: noise floor, sweep, channel roles, delay and echo gain, profile writer.
+4. `hardware` echo mode and the device database (XVF3800-class arrays first).
+5. `loopback` echo mode (reference channels in the capture stream).
+6. ROS 2 topic backend and `ral_ros` bridge node (on the Ubuntu machine).
+7. Pipecat transport.
+8. Profile schema migrations and the profile registry.
 
 ## M0, Foundations (done 2026-10-19; CI green)
 

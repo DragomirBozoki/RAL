@@ -36,6 +36,7 @@ from ral.dsp.bargein import BargeInDetector
 from ral.dsp.pipeline import build_capture_chain
 from ral.dsp.vad import EnergyVad
 from ral.engine.capture import CaptureGraph, CaptureResult
+from ral.metrics.latency import LatencyTracker
 from ral.playback.reference import ReferenceBuffer
 from ral.playback.service import PlaybackQueue
 from ral.playback.writer import SinkWriter
@@ -124,6 +125,9 @@ class Engine:
         self._capture_task: asyncio.Task[None] | None = None
         self._loop: asyncio.AbstractEventLoop | None = None
         self._remove_listener: Any = None
+        self._remove_latency: Any = None
+        self.latency = LatencyTracker()
+        """Per-turn latency; replaced with a publishing tracker on start."""
         self.capture_done = asyncio.Event()
         """Set when the source ended (a file ran out) and every frame was processed."""
         self.input_overruns = 0
@@ -182,6 +186,13 @@ class Engine:
             engine_rate=self.engine_fmt.sample_rate,
         )
         self._remove_listener = self.bus.add_listener(self._on_event)
+        loop = self._loop
+
+        def publish_later(event: Event) -> None:
+            loop.call_soon(self.bus.publish, event)  # not from inside the bus's own publish
+
+        self.latency = LatencyTracker(publish=publish_later)
+        self._remove_latency = self.bus.add_listener(self.latency.on_event)
         if self.record:
             self._start_recorder()
 
@@ -227,6 +238,9 @@ class Engine:
         if self._remove_listener is not None:
             self._remove_listener()
             self._remove_listener = None
+        if self._remove_latency is not None:
+            self._remove_latency()
+            self._remove_latency = None
         for sub in list(self._subs):
             sub.close()
 
