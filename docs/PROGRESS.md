@@ -9,9 +9,9 @@ See `docs/DESIGN.md` section 10.
 | 1 | Scaffolding, tooling, CI | done |
 | 2 | Core types, errors, conversions | done |
 | 3 | RingBuffer and Framer | done |
-| 4 | DeviceBackend protocol and FileBackend | in review |
-| 5 | PortAudioBackend | next |
-| 6 | `ral doctor` v0 | |
+| 4 | DeviceBackend protocol and FileBackend | done |
+| 5 | PortAudioBackend | done (hardware record and play tests to be run by the maintainer) |
+| 6 | `ral doctor` v0 | next |
 | 7 | Spike: WebRTC APM standalone, ERLE on synthetic echo | |
 
 ## Done
@@ -30,6 +30,11 @@ See `docs/DESIGN.md` section 10.
   `ral.core.clock.now_ns()`; `ral.devices.FileBackend` with `FileSource` and `FileSink`
   (16-bit PCM WAV, fast or realtime, render hooks, silence on underrun, `drop_newest`).
   Round trip bit-exact for int16 and float32 frames. Spike `spikes/clock_resolution.py`.
+- **Step 5.** `ral.devices.portaudio`: `PortAudioBackend` (discovery with the preferred host
+  API first, `default_device`, `find`, `native_format`), `PortAudioSource` (callback pushes
+  into a `Framer`), `PortAudioSink` (`drop_newest` buffer, render hooks with DAC time),
+  `PaClockMapper`. Fake-`sounddevice` tests plus three `hardware` tests. Spike
+  `spikes/portaudio_time.py`.
 
 ## Decisions
 
@@ -68,6 +73,14 @@ See `docs/DESIGN.md` section 10.
   channels; `dtype` may be `int16` (unchanged) or `float32` (converted). Realtime sources
   deliver a frame once its last sample is due; realtime sinks render every 10 ms from a
   `drop_newest` ring buffer. Render hooks get samples in the sink's dtype.
+- 2026-10-19 (step 5): PortAudio time is mapped through a measured offset (lower envelope
+  of `now_ns() - currentTime`, rising by 1/128 per callback), not assumed equal to the RAL
+  clock. ADC/DAC times that are 0 or equal to `currentTime` fall back to `currentTime` -/+
+  stream latency. Streams use `blocksize=0` and `latency="low"`; `frames()` polls the Framer
+  every 5 ms because waking the event loop from a callback is not real-time safe.
+- 2026-10-19 (step 5): PortAudio input overflow and output underflow flags are counted
+  (`input_overflows`, `output_underflows`); the sink's `buffer.underruns` also counts idle
+  silence until the M1 playback service can tell idle from starved.
 - 2026-10-15: Python 3.10 tests run locally in a separate env
   (`UV_PROJECT_ENVIRONMENT=.venv310 uv run --python 3.10 --all-extras pytest`), so the main
   `.venv` stays on 3.12. `.venv*/` is ignored.
@@ -85,4 +98,4 @@ See `docs/DESIGN.md` section 10.
 
 ## Next
 
-Step 5: `PortAudioBackend` (check that PortAudio's stream time on Windows is QPC-based).
+Step 6: `ral doctor` v0.
