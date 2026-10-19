@@ -16,6 +16,8 @@ from ral.core.protocols import (
     AudioSink,
     AudioSource,
     DeviceBackend,
+    PlaybackHandle,
+    PlaybackService,
     ReferenceProvider,
     RenderHook,
 )
@@ -48,6 +50,8 @@ __all__ = [
     "Framer",
     "MissingDependencyError",
     "OverrunPolicy",
+    "PlaybackHandle",
+    "PlaybackService",
     "RalError",
     "ReadResult",
     "ReferenceProvider",

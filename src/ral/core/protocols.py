@@ -8,13 +8,22 @@ but ``isinstance`` only checks that the members exist, not their signatures.
 from __future__ import annotations
 
 from collections.abc import AsyncIterator, Callable
+from dataclasses import dataclass
 from typing import Any, Protocol, runtime_checkable
 
 import numpy.typing as npt
 
 from ral.core.types import AudioFormat, AudioFrame, ChannelMap, DeviceInfo
 
-__all__ = ["AudioSink", "AudioSource", "DeviceBackend", "ReferenceProvider", "RenderHook"]
+__all__ = [
+    "AudioSink",
+    "AudioSource",
+    "DeviceBackend",
+    "PlaybackHandle",
+    "PlaybackService",
+    "ReferenceProvider",
+    "RenderHook",
+]
 
 RenderHook = Callable[[npt.NDArray[Any], int], None]
 """``hook(samples, t_dac_ns)``: a block handed to the device and when it plays."""
@@ -95,3 +104,29 @@ class ReferenceProvider(Protocol):
     def frames_until(self, t_ns: int) -> list[AudioFrame]:
         """Every buffered frame whose DAC time is earlier than ``t_ns``, oldest first."""
         ...
+
+
+@dataclass(frozen=True)
+class PlaybackHandle:
+    """Identifies one item given to the playback service."""
+
+    id: int
+    tag: str
+
+
+@runtime_checkable
+class PlaybackService(Protocol):
+    """Plays audio with priorities and clean interruption (DESIGN section 5)."""
+
+    def play(
+        self,
+        audio: AsyncIterator[AudioFrame],
+        *,
+        priority: int = 50,
+        interruptible: bool = True,
+        tag: str = "",
+    ) -> PlaybackHandle: ...
+
+    async def stop(self, handle: PlaybackHandle, fade_ms: int = 40) -> None: ...
+
+    def duck(self, gain_db: float, duration_ms: int) -> None: ...

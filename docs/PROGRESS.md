@@ -11,8 +11,8 @@ and `ral models fetch` for the Silero model.
 | 1 | Normalizer and resampler | done |
 | 2 | `ReferenceBuffer` | done |
 | 3 | Events and `EventBus` | done |
-| 4 | Playback service | next |
-| 5 | Echo controllers (`software_ref`, `gate`) | |
+| 4 | Playback service | done |
+| 5 | Echo controllers (`software_ref`, `gate`) | next |
 | 6 | Noise suppression, high-pass, AGC; energy VAD | |
 | 7 | Silero VAD | |
 | 8 | Barge-in and self-trigger metric | |
@@ -34,6 +34,10 @@ and `ral models fetch` for the Silero model.
 - **Step 3.** `ral.core.events` (15 frozen event types, JSON round trip, plugin subclasses
   found automatically) and `ral.core.bus.EventBus` (bounded per-subscriber queues that drop
   the oldest, type filters, sync listeners, `publish_threadsafe`).
+- **Step 4.** `PlaybackHandle` and `PlaybackService` protocols; `ral.playback.SinkWriter`
+  (resample, upmix, dtype, realtime pacing with `ahead_ms`, DAC-time cursor) and
+  `ral.playback.PlaybackQueue` (priorities, preemption, raised-cosine fades, ducking,
+  `interrupt`, `wait`, `speaking_at`, events at DAC time); `audio_frames()` helper.
 
 ### M1 decisions
 

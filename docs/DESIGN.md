@@ -350,6 +350,8 @@ A reference that reaches the echo canceller after its echo cannot be cancelled. 
 - Interrupts fade out over 20 to 50 ms to avoid clicks; ducking lowers background audio under speech.
 - `PlaybackStarted` fires when the first sample is estimated at the DAC, not when the request arrives, so gestures and lip sync line up with real sound. Word timings from TTS are re-stamped to the same clock.
 - Underruns render silence, and the silence also goes to the reference, so the echo canceller's timeline stays continuous.
+- **v0.1 model** (`PlaybackQueue`): one item plays at a time; a higher-priority item preempts an interruptible one (fade out, dropped, not resumed); suggested priorities are alerts 90, speech 50, earcons 30, music 10. Mixing concurrent items is M2. Each item's async iterator is pumped into a short queue (500 ms), so a slow producer never stalls output; a missing frame becomes silence at the sink. Fades are raised-cosine; `duck` ramps the output gain over 30 ms. Barge-in calls `interrupt()`, which fades the playing item and drops queued interruptible items.
+- **`SinkWriter`** resamples the mono engine frames to the sink's rate, copies them to every sink channel and converts the dtype. In realtime it keeps at most `ahead_ms` (40 ms) queued past the device latency, which bounds how late an interrupt takes effect. It keeps a DAC-time cursor: `now + output_latency` after the sink ran dry, plus 10 ms per frame while audio flows. `PlaybackStarted`, `PlaybackEnded` and `speaking_at(t)` come from that cursor, and the events are published when their DAC time arrives.
 
 ### Barge-in policy
 
