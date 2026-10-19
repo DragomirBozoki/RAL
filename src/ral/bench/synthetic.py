@@ -54,7 +54,7 @@ def voice(n: int, rate: int, f0: float, seed: int) -> Signal:
     pitch = f0 * (1 + 0.12 * np.sin(2 * np.pi * 0.6 * t + rng.uniform(0, 6)) + 3 * drift)
     phase = 2 * np.pi * np.cumsum(pitch) / rate
     formants = (rng.uniform(450, 750), rng.uniform(1100, 1800), rng.uniform(2300, 2900))
-    x = np.zeros(n)
+    x: Signal = np.zeros(n)
     for h in range(1, 40):
         freq = h * pitch
         weight = 0.05 + sum(np.exp(-(((freq - f) / 180.0) ** 2)) for f in formants)

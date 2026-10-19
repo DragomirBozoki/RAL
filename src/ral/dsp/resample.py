@@ -83,7 +83,7 @@ class Resampler:
         if self.passthrough:
             self._taps = 1
             self._delay = 0
-            self._bank = np.ones((1, 1), dtype=np.float32)
+            self._bank: Float32Array = np.ones((1, 1), dtype=np.float32)
         else:
             self._bank, self._taps, self._delay = self._design(
                 zero_crossings, rolloff, attenuation_db

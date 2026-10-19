@@ -69,7 +69,7 @@ class Normalizer:
         self._keep: list[int] | None = None if len(keep) == in_fmt.channels else list(keep)
         self._resampler = Resampler(in_fmt.sample_rate, engine_rate, len(keep))
         self._pending: deque[tuple[int, int]] = deque()  # (seq, t_ns) awaiting output
-        self._out = np.zeros((0, len(keep)), dtype=np.float32)
+        self._out: npt.NDArray[np.float32] = np.zeros((0, len(keep)), dtype=np.float32)
         self._next_seq: int | None = None
         self._clock_id = ""
         self.gaps = 0

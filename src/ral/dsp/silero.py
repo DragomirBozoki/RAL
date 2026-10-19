@@ -75,7 +75,7 @@ class SileroVad:
         self.state.reset()
         self._h = np.zeros((2, 1, 128), np.float32)
         self._context: npt.NDArray[np.float32] | None = None
-        self._buf = np.zeros(0, np.float32)
+        self._buf: npt.NDArray[np.float32] = np.zeros(0, np.float32)
         self._buf_t: int | None = None  # capture time of _buf[0]
         self._next_seq: int | None = None
         if self._resampler is not None:

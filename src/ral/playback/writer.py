@@ -61,7 +61,7 @@ class SinkWriter:
         self._ahead_ns = ahead_ms * 1_000_000
         self._resampler = Resampler(in_fmt.sample_rate, sink.fmt.sample_rate, 1)
         self._map = ChannelMap.uniform(sink.fmt.channels)
-        self._fifo = np.zeros((0, 1), dtype=np.float32)
+        self._fifo: npt.NDArray[np.float32] = np.zeros((0, 1), dtype=np.float32)
         self._cursor: int | None = None
         self._seq = 0
         self.frames_written = 0
