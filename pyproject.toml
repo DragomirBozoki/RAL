@@ -45,6 +45,9 @@ dsp = [
 record = [
     "mcap>=1.1",         # MIT; session recordings readable in Foxglove
 ]
+server = [
+    "websockets>=13",    # BSD-3-Clause; WebSocket bridge. TODO: fastapi, grpcio for the control API
+]
 # TODO(M2): add pyroomacoustics to dev once simulated-room tests exist.
 dev = [
     "mypy>=1.10",

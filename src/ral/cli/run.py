@@ -24,6 +24,9 @@ def run(
     duration: float = typer.Option(0.0, help="Stop after this many seconds (0: run until Ctrl-C)."),
     play: Path | None = typer.Option(None, help="Play this WAV file through RAL once started."),
     json_events: bool = typer.Option(False, "--json", help="Print events as JSON lines."),
+    bridge: list[str] = typer.Option(
+        [], "--bridge", "-b", help="Also start this bridge with default settings (repeatable)."
+    ),
     record: bool | None = typer.Option(
         None,
         "--record/--no-record",
@@ -41,6 +44,8 @@ def run(
         console.print(f"[red]{exc}[/red]")
         raise typer.Exit(2) from None
     try:
+        for name in bridge:
+            prof.bridges.setdefault(name, {})
         asyncio.run(_run(prof, duration, play, json_events, record))
     except KeyboardInterrupt:
         pass
@@ -52,6 +57,7 @@ def run(
 async def _run(
     prof: object, duration: float, play: Path | None, json_events: bool, record: bool | None
 ) -> None:
+    from ral.bridges import start_bridges, stop_bridges
     from ral.engine.engine import Engine
     from ral.playback.clip import load_wav
     from ral.playback.service import audio_frames
@@ -61,6 +67,7 @@ async def _run(
     engine = Engine(prof, record=record)
     events = engine.bus.subscribe()
     async with engine:
+        bridges = await start_bridges(engine, prof.bridges)
         t0 = now_ns()
         if not json_events:
             console.print(
@@ -84,6 +91,7 @@ async def _run(
         try:
             await asyncio.wait(waits, return_when=asyncio.FIRST_COMPLETED)
         finally:
+            await stop_bridges(bridges)
             for w in waits:
                 w.cancel()
             events.close()

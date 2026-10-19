@@ -18,8 +18,8 @@ and `ral models fetch` for the Silero model.
 | 8 | Barge-in and self-trigger metric | done |
 | 9 | `Engine` and `ral run` | done |
 | 10 | MCAP recorder | done |
-| 11 | WebSocket bridge | next |
-| 12 | LiveKit bridge | |
+| 11 | WebSocket bridge | done |
+| 12 | LiveKit bridge | next |
 | 13 | Latency report and demo recording | |
 
 ### M1 done
@@ -78,6 +78,11 @@ and `ral models fetch` for the Silero model.
   default, `RecordingStarted` and `RecordingStopped`). `record` extra: `mcap` (MIT, with lz4
   and zstandard, BSD). Spike `spikes/mcap_rawaudio.py`: bit-exact, 1.94 MB per minute per
   mono channel. Fixed a flaky M0 PortAudio test (fake clock taken before the loop).
+- **Step 11.** `ral.bridges` (`Bridge` protocol, registry with the `ral.bridges` entry
+  point, `start_bridges` and `stop_bridges`); `ral.bridges.websocket.WebSocketBridge`
+  (protocol v1, localhost by default); `ral.playback.stream.PcmStream` (pushed PCM of any
+  chunk size as one playback item); `ral run --bridge NAME`; `examples/websocket_client.py`.
+  `server` extra: `websockets` (BSD-3).
 
 ### M1 decisions
 

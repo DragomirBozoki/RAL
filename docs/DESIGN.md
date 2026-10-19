@@ -454,6 +454,9 @@ RAL integrates by standing in for the microphone and speaker that each stack alr
 | Speech-to-speech models | `RealtimeModel` port streams clean audio to the provider and plays its answer through the playback service | API key and instructions in the profile |
 | Standalone STT and TTS | `SpeechToText` and `TextToSpeech` ports with one local and one cloud reference adapter each | Choose models in the profile, or write a small adapter |
 | Any language (C++, Rust, C#, JS) | WebSocket with binary PCM frames and JSON control; gRPC streaming for typed clients | A small client |
+
+**WebSocket protocol v1** (`ral.bridges.websocket`, `websockets` in the `server` extra; a lighter choice than FastAPI for one socket, FastAPI can come with the REST control API). Server to client: a `hello` JSON message with the session id and formats, then binary clean frames (10 ms, `pcm-s16`, mono, engine rate; `?audio=0` for events only) and every event as JSON text. Client to server: binary PCM at the playback rate joins the connection's current utterance, played through the playback service as one interruptible item; JSON `play` (tag, priority, interruptible), `end`, `stop`, `interrupt`, `duck` and `ping`. The server listens on 127.0.0.1 unless the profile names another address, because a listening socket exposes the robot's microphone. Slow clients lose their oldest messages instead of delaying others.
+
 | Robot behaviour | `EventBus` to ROS 2 topics, webhooks or a gRPC stream: speaking, listening, barge-in, word timings, direction of arrival | Map events to gestures, LEDs, head turns |
 | Hardware AEC arrays | Device database entry plus `hardware` echo mode | Nothing |
 | Vendor HALs | Backend or decoder plugin per vendor message type, each profile marked community, maintainer-tested or certified | Contribute a plugin and a profile |
@@ -540,7 +543,7 @@ Python with native DSP libraries is fast enough for speech at 16 kHz and 10 ms f
 | `livekit` | livekit, livekit-api | LiveKit bridge |
 | `pipecat` | pipecat-ai | Pipecat transport |
 | `record` | mcap | recorder and replay |
-| `server` | fastapi, uvicorn, grpcio | control API, WebSocket and gRPC endpoints |
+| `server` | websockets (M1); later fastapi, uvicorn, grpcio | WebSocket bridge; later the control API and gRPC |
 | `dev` | pytest, pytest-asyncio, ruff, mypy, pre-commit, pip-licenses, pyroomacoustics | development |
 
 Also planned: Docker images for x86_64 and ARM64 (Jetson-class), a colcon package `ral_ros`, and a systemd unit. Verify the licence and wheel availability of every new dependency before adding it.
