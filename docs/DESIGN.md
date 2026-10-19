@@ -308,7 +308,7 @@ Echo control picks one of four modes from what the hardware offers. The engine's
 
 1. **Backend** delivers raw blocks in the device's native format (for example 6 channels of 16-bit PCM from a HAL topic, or 2 channels from a USB card).
 2. **Framer** cuts blocks into exact 10 ms frames in the device's native rate and dtype and stamps each with `t_ns`.
-3. **Normalizer** converts to float32, resamples to the engine rate (16 kHz default, 48 kHz optional) and applies the channel map. Reference channels are resampled with the same settings as the mics.
+3. **Normalizer** converts to float32, resamples to the engine rate (16 kHz default, 48 kHz optional) and applies the channel map: `unused` channels are dropped, the others keep their order and roles. Reference channels are resampled with the same settings as the mics. The resampler is time-aligned (output sample `k` estimates the input at `k * M / L`), so each output frame inherits the `t_ns` and `seq` of the input frame covering the same 10 ms; its lookahead (about 1.5 ms) delays availability, not timestamps. A `seq` gap flushes the resampler and starts a new run.
 4. **Echo controller** removes the robot's own audio using the mode below. In v0.1 it runs on one selected mic channel (`echo.mic`, an index or `mean`); multi-channel AEC comes later. Raw channels still go to the recorder.
 5. **Noise suppression and gain control** clean the residual.
 6. **VAD and barge-in detector** emit speech events and decide whether an interruption is real.
@@ -505,7 +505,7 @@ Python with native DSP libraries is fast enough for speech at 16 kHz and 10 ms f
 |---|---|---|
 | Language | Python 3.10+, asyncio for control, numpy for buffers | Matches the ROS 2, LiveKit and Pipecat ecosystems. 3.10 is the floor because ROS 2 Humble and JetPack 6 are on Ubuntu 22.04; ROS 2 Jazzy uses 3.12 |
 | Audio I/O | PortAudio through `sounddevice` (MIT) | ALSA, PulseAudio and PipeWire on Linux; also Windows and macOS for development. Linux needs the system PortAudio library (`libportaudio2` on Debian and Ubuntu) |
-| Resampling | `samplerate` (MIT, bundles libsamplerate, BSD-2-Clause) | Wheels for Linux x86_64 and aarch64, Windows and macOS; the ratio is passed on every call, which drift compensation needs. `python-soxr` is LGPL, so it is not used in the core |
+| Resampling | In-house streaming polyphase FIR (`ral.dsp.resample`, numpy only; Kaiser-windowed sinc, about 85 dB) for the fixed engine ratios | `samplerate` (MIT) has no wheel for CPython 3.10 on Linux aarch64, the Jetson and ROS 2 Humble target. Drift compensation (M3) needs a varying ratio: revisit `samplerate` or extend the in-house resampler then. `python-soxr` is LGPL, so it is not used in the core |
 | WAV files | stdlib `wave` (16-bit PCM) | No extra dependency for tests and the file backend |
 | Echo, noise, gain | WebRTC APM through the `livekit` package (Apache-2.0; wheels include Linux aarch64) | Proven AEC3, pip-installable; SpeexDSP as an alternative plugin |
 | VAD | Silero VAD as ONNX with `onnxruntime`; energy VAD as the dependency-free fallback | Accurate on CPU without PyTorch |
@@ -521,7 +521,7 @@ Python with native DSP libraries is fast enough for speech at 16 kHz and 10 ms f
 
 | Extra | Packages | Needed for |
 |---|---|---|
-| core | numpy, samplerate, pydantic, PyYAML, typer, rich | engine, profiles, CLI |
+| core | numpy, pydantic, PyYAML, typer, rich | engine, profiles, CLI |
 | `audio` | sounddevice | PortAudio backend |
 | `dsp` | livekit, onnxruntime | APM echo control, noise, gain, Silero VAD |
 | `livekit` | livekit, livekit-api | LiveKit bridge |
@@ -603,6 +603,7 @@ docs/          # DESIGN.md, PROGRESS.md
 - [ROS Index: `audio_common_msgs`](https://index.ros.org/p/audio_common_msgs/)
 - [MCAP](https://foxglove.dev/product/mcap)
 - [XMOS XVF3800 voice processing pipeline](https://xmos.com/documentation/XM-014888-PC/html/modules/fwk_xvf/doc/datasheet/03_audio_pipeline.html)
-- [`samplerate` on PyPI](https://pypi.org/project/samplerate/)
+- [`samplerate` on PyPI](https://pypi.org/project/samplerate/) (considered for resampling; see section 9)
+- J. F. Kaiser, "Nonrecursive digital filter design using the I0-sinh window function", Proc. IEEE ISCAS, 1974; R. E. Crochiere and L. R. Rabiner, "Multirate Digital Signal Processing", 1983 (polyphase resampling).
 - [Silero VAD](https://github.com/snakers4/silero-vad)
 - C. Knapp and G. Carter, "The generalized correlation method for estimation of time delay", IEEE Transactions on Acoustics, Speech, and Signal Processing, 1976 (GCC-PHAT).
