@@ -11,8 +11,8 @@ See `docs/DESIGN.md` section 10.
 | 3 | RingBuffer and Framer | done |
 | 4 | DeviceBackend protocol and FileBackend | done |
 | 5 | PortAudioBackend | done (hardware record and play tests to be run by the maintainer) |
-| 6 | `ral doctor` v0 | next |
-| 7 | Spike: WebRTC APM standalone, ERLE on synthetic echo | |
+| 6 | `ral doctor` v0 | done (ROS 2 part to be verified on Ubuntu) |
+| 7 | Spike: WebRTC APM standalone, ERLE on synthetic echo | next |
 
 ## Done
 
@@ -35,6 +35,12 @@ See `docs/DESIGN.md` section 10.
   into a `Framer`), `PortAudioSink` (`drop_newest` buffer, render hooks with DAC time),
   `PaClockMapper`. Fake-`sounddevice` tests plus three `hardware` tests. Spike
   `spikes/portaudio_time.py`.
+- **Step 6.** `ral doctor` v0 (`ral.devices.doctor`, `ral.cli.doctor`): `HostScanner` (OS,
+  Python, RAL clock, Linux `/dev/snd` access, PipeWire or PulseAudio), `PortAudioScanner`
+  (library, host APIs, default devices, devices listed under several host APIs),
+  `Ros2Scanner` (RMW, domain ID, localhost-only and discovery-server variables, audio-like
+  topics with types and publisher QoS). Rich tables or `--json`; exit 1 on errors.
+  Shared test fakes in `tests/fakes/` (pytest `pythonpath = ["tests"]`).
 
 ## Decisions
 
@@ -73,6 +79,12 @@ See `docs/DESIGN.md` section 10.
   channels; `dtype` may be `int16` (unchanged) or `float32` (converted). Realtime sources
   deliver a frame once its last sample is due; realtime sinks render every 10 ms from a
   `drop_newest` ring buffer. Render hooks get samples in the sink's dtype.
+- 2026-10-19 (step 6): doctor levels are ok/info/warn/error, shown as green/amber/red per
+  area; `info` never changes an area's colour. When `rclpy` does not import, the ROS 2
+  area is listed as skipped, not as a finding. The device table shows the preferred host
+  API only unless `--all-devices`. Echo-mode suggestion waits for the device database (M2).
+- 2026-10-19 (step 6): the rclpy graph code (`RclpyGraph`) is written from the rclpy docs but
+  not run yet; it uses its own `Context` so it never touches an application's rclpy state.
 - 2026-10-19 (step 5): PortAudio time is mapped through a measured offset (lower envelope
   of `now_ns() - currentTime`, rising by 1/128 per callback), not assumed equal to the RAL
   clock. ADC/DAC times that are 0 or equal to `currentTime` fall back to `currentTime` -/+
@@ -98,4 +110,4 @@ See `docs/DESIGN.md` section 10.
 
 ## Next
 
-Step 6: `ral doctor` v0.
+Step 7: APM feasibility spike.

@@ -375,7 +375,7 @@ Design targets, to be verified with `ral bench`: capture buffering 10 to 20 ms, 
 | Network | Reachability and round-trip time to LiveKit, WebSocket and gRPC endpoints | "LiveKit server unreachable from this host" |
 | Result | Green, amber or red per area and a suggested echo mode | `suggested_mode: loopback` |
 
-Every check returns structured findings (`area`, `level`, `message`, `hint`), printed as a table or as JSON with `--json`.
+Every check returns structured findings (`area`, `level`, `message`, `hint`), printed as a table or as JSON with `--json`. Levels are `ok`, `info`, `warn` and `error`; an area's colour is its worst level (`info` is context and never changes it), and `ral doctor` exits with status 1 when any finding is an error. The ROS 2 section runs only when `rclpy` imports; otherwise the report lists it as skipped. A check that crashes becomes an error finding instead of stopping the doctor.
 
 On Windows, PortAudio lists the same physical device under several host APIs (MME, DirectSound, WASAPI, WDM-KS). Doctor groups devices by host API and prefers WASAPI there; on Linux it prefers ALSA or the PipeWire and PulseAudio servers.
 

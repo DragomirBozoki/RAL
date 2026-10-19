@@ -85,12 +85,14 @@ strict = true
 
 [[tool.mypy.overrides]]
 # Optional dependencies without type information; RAL wraps them behind typed classes.
-module = ["sounddevice"]
+module = ["sounddevice", "rclpy", "rclpy.*"]
 ignore_missing_imports = true
 
 [tool.pytest.ini_options]
 minversion = "8.0"
 testpaths = ["tests"]
+# Shared fakes live in tests/fakes and are imported as `fakes`.
+pythonpath = ["tests"]
 # Hardware tests are skipped by default; run them with `pytest -m hardware`
 # (a later -m on the command line replaces this one).
 addopts = ["-ra", "--strict-markers", "-m", "not hardware"]

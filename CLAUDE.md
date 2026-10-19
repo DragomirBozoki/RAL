@@ -58,6 +58,7 @@ uv run mypy src
 uv run pytest                                      # unit and integration tests
 uv run pytest -m hardware                          # needs real audio devices
 uv run ral --help
+uv run ral doctor                                  # read-only host and device check; --json
 ```
 
 ## Definition of done for a step

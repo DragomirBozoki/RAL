@@ -6,6 +6,7 @@ import typer
 from rich.console import Console
 
 from ral import __version__
+from ral.cli.doctor import doctor
 
 app = typer.Typer(
     name="ral",
@@ -33,4 +34,6 @@ def main(
     ),
 ) -> None:
     """RAL, the Robot Audio Layer."""
-    # TODO(M0 step 6): add the `doctor` command.
+
+
+app.command()(doctor)
