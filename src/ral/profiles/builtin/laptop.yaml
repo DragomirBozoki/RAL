@@ -1,0 +1,22 @@
+# A laptop with a speaker and a microphone (DESIGN section 7, robot target 1).
+# Run it with: ral run --profile laptop
+ral: 1
+robot:
+  model: laptop
+  validated_by: community
+capture:
+  backend: portaudio          # default input device; set `device:` to a name to choose
+  channels: [mic]
+  # format: {rate: 48000, channels: 1, dtype: float32}   # default: the device's own rate
+playback:
+  backend: portaudio          # default output device
+  # format: {rate: 48000, channels: 2, dtype: float32}
+echo:
+  mode: software_ref          # RAL plays everything, so it knows the reference
+  mic: 0
+  lead_ms: 20
+pipeline: [aec, noise_suppression, high_pass, vad]
+vad: {engine: silero, threshold: 0.5, min_speech_ms: 100, hangover_ms: 300}
+barge_in: {policy: vad+dtd}
+bridges: {}
+recording: {enabled: false}

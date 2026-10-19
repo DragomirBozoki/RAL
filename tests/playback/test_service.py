@@ -58,29 +58,29 @@ async def test_same_priority_plays_in_order(rig_factory: RigFactory) -> None:
 
 
 async def test_higher_priority_preempts_with_fade(rig_factory: RigFactory) -> None:
-    gate = asyncio.Event()
-    async with rig_factory() as rig:
-        low = rig.queue.play(gated([0.5] * 100, gate, after=10), priority=10, tag="music")
-        await settle()
-        high = rig.queue.play(gated([0.25] * 5), priority=90, tag="alert")
-        await settle()
-        gate.set()
+    async with rig_factory(realtime=True) as rig:
+        low = rig.queue.play(gated([0.5] * 100), priority=10, tag="music")
+        await asyncio.sleep(0.15)
+        high = rig.queue.play(gated([0.25] * 10), priority=90, tag="alert")
         assert await rig.queue.wait(low) is True
         assert await rig.queue.wait(high) is False
+        await asyncio.sleep(0.1)  # the file sink renders on coarse timer ticks
     out = rig.output()[:, 0]
-    # 10 full frames of music, then a 40 ms fade, then the alert.
-    np.testing.assert_allclose(out[:1600], 0.5, atol=1e-4)
-    fade = out[1600:2240]
-    assert np.all(np.diff(fade) <= 1e-6)
-    assert fade[-1] < 0.01
-    np.testing.assert_allclose(out[2240:3040], 0.25, atol=1e-4)
-    kinds = [(type(e).__name__, tag_of(e)) for e in rig.drain_events()]
-    assert kinds == [
-        ("PlaybackStarted", "music"),
-        ("PlaybackEnded", "music"),
-        ("PlaybackStarted", "alert"),
-        ("PlaybackEnded", "alert"),
-    ]
+    start = int(np.argmax(out > 0.4))
+    fade_start = start + int(np.argmax(out[start:] < 0.49))
+    at_alert = (np.abs(out - 0.25) < 1e-3).astype(int)
+    alert = np.flatnonzero(np.convolve(at_alert, np.ones(160, int), "valid") == 160)
+    assert alert.size > 0  # a run of at least one frame at the alert level
+    fade = out[fade_start : alert[0]]
+    fade = fade[fade > 1e-4]
+    assert np.all(np.diff(fade) <= 1e-6)  # a smooth ramp down, not a cut
+    assert 400 <= fade.size <= 660  # most of the 40 ms (640 samples) raised cosine
+    assert not np.any(out[alert[0] :] > 0.3)  # the music never comes back
+    # Ended(music) and Started(alert) share one DAC time, so check the timeline by t_ns.
+    t = {(type(e).__name__, tag_of(e)): e.t_ns for e in rig.drain_events()}
+    assert t[("PlaybackStarted", "music")] < t[("PlaybackEnded", "music")]
+    assert t[("PlaybackEnded", "music")] <= t[("PlaybackStarted", "alert")]
+    assert t[("PlaybackStarted", "alert")] < t[("PlaybackEnded", "alert")]
 
 
 async def test_uninterruptible_item_is_not_preempted(rig_factory: RigFactory) -> None:
@@ -98,19 +98,28 @@ async def test_uninterruptible_item_is_not_preempted(rig_factory: RigFactory) ->
 
 
 async def test_stop_fades_and_stops_cleanly(rig_factory: RigFactory) -> None:
+    async with rig_factory(realtime=True) as rig:
+        h = rig.queue.play(gated([0.5] * 100))
+        await asyncio.sleep(0.15)
+        await rig.queue.stop(h, fade_ms=20)
+        assert not rig.queue.busy
+        await asyncio.sleep(0.1)
+    out = rig.output()[:, 0]
+    loud = np.flatnonzero(out > 0.45)
+    tail = out[loud[-1] :]
+    ramp_end = int(np.argmax(tail < 1e-4))
+    assert 200 <= ramp_end <= 330  # the lower 80 % of a 20 ms (320-sample) ramp
+    assert np.all(np.diff(tail[: ramp_end + 1]) <= 1e-6)
+    assert np.all(np.abs(tail[ramp_end:]) < 1e-4)  # silence after the fade
+
+
+async def test_stop_with_a_stalled_producer_ends_at_once(rig_factory: RigFactory) -> None:
     gate = asyncio.Event()
     async with rig_factory() as rig:
         h = rig.queue.play(gated([0.5] * 50, gate, after=5))
         await settle()
-        stopping = asyncio.create_task(rig.queue.stop(h, fade_ms=20))
-        await settle()
-        gate.set()
-        await stopping
-        assert not rig.queue.busy
-    out = rig.output()[:, 0]
-    assert len(out) == 5 * 160 + 320
-    assert out[-1] < 0.01
-    assert np.all(np.diff(out[800:]) <= 1e-6)
+        await asyncio.wait_for(rig.queue.stop(h, fade_ms=20), 1)
+    assert len(rig.output()) == 5 * 160
 
 
 async def test_stop_queued_item_drops_it_without_events(rig_factory: RigFactory) -> None:

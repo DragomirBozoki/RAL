@@ -29,6 +29,7 @@ jobs:
   test:
     name: test (${{ matrix.os }}, py${{ matrix.python }})
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
     strategy:
       fail-fast: false
       matrix:
@@ -54,6 +55,7 @@ jobs:
   pip-install:
     name: pip install (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
     strategy:
       fail-fast: false
       matrix:

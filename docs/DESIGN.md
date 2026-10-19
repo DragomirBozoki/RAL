@@ -436,6 +436,8 @@ bridges:
 recording: {enabled: false}
 ```
 
+Profiles are validated with pydantic and unknown keys are errors, so a typo cannot silently fall back to a default. `${VAR}` and `${VAR:-default}` in strings come from the environment, so secrets stay in `.env`. A bare `off` in YAML 1.1 is the boolean false; the schema accepts it as the string `off` where a mode or policy is expected. Built-in profiles ship in `ral/profiles/builtin/` (`ral run --profile laptop`).
+
 ### Device database
 
 A small community-maintained YAML catalogue keyed by USB vendor and product ID (and later by ROS 2 message type) with what each device can do. It turns hard-won knowledge ("this array expects the reference on the left channel") into data that `ral doctor` applies automatically.
@@ -546,7 +548,8 @@ Also planned: Docker images for x86_64 and ARM64 (Jetson-class), a colcon packag
 ### Threading model
 
 - The PortAudio or ROS 2 callback only copies data into a ring buffer.
-- One DSP worker thread runs framing, normalisation, echo control, noise, gain and VAD frame by frame.
+- An asyncio task pulls native frames from the source (`AudioSource.frames()` stays async) into a bounded queue of 2 s. For a live device a full queue drops its oldest frame (bounded latency; the Normalizer sees the gap); for an offline file the task waits instead, so nothing is lost.
+- One DSP worker thread runs normalisation, echo control, noise, gain, VAD and barge-in frame by frame (`CaptureGraph`, which has no threads or asyncio of its own, so replay and tests run the same code). It hands results back with `call_soon_threadsafe`; the event bus and subscribers are only touched on the loop. The playback service's speaking state is read from the DSP thread under a short lock.
 - The asyncio loop runs bridges, the API, the recorder writer and metrics.
 - If bridges starve the DSP thread through the GIL, the engine moves into its own process with shared-memory ring buffers; only if that is not enough does the hot path move to Rust (via PyO3).
 

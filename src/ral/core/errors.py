@@ -7,6 +7,7 @@ in one place. Messages say what failed and how to fix it.
 from __future__ import annotations
 
 __all__ = [
+    "ConfigError",
     "DeviceError",
     "DeviceNotFoundError",
     "FormatError",
@@ -48,3 +49,7 @@ class MissingDependencyError(RalError, ImportError):
             f"{purpose} needs the optional package '{package}', which is not installed. "
             f"Install it with: {self.install_hint}"
         )
+
+
+class ConfigError(RalError, ValueError):
+    """A profile or setting is missing or invalid."""

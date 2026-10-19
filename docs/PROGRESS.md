@@ -16,8 +16,8 @@ and `ral models fetch` for the Silero model.
 | 6 | Noise suppression, high-pass, AGC; energy VAD | done |
 | 7 | Silero VAD | done |
 | 8 | Barge-in and self-trigger metric | done |
-| 9 | `Engine` and `ral run` | next |
-| 10 | MCAP recorder | |
+| 9 | `Engine` and `ral run` | done |
+| 10 | MCAP recorder | next |
 | 11 | WebSocket bridge | |
 | 12 | LiveKit bridge | |
 | 13 | Latency report and demo recording | |
@@ -65,6 +65,13 @@ and `ral models fetch` for the Silero model.
   normalised (it clipped the mic). Playback: `PlaybackEnded` uses the end of the last frame
   written; items start after a 30 ms jitter buffer; the writer lead covers four asyncio
   timer ticks (Windows before 3.13 has 15.6 ms ticks). The local check now runs 3.10 too.
+- **Step 9.** `ral.profiles` (pydantic schema v1, YAML, `${VAR}` expansion, built-in
+  `laptop` profile, errors with the path of every problem); `ral.engine.Engine` (devices from
+  the profile, reference buffer on the sink's render hook, DSP worker thread around
+  `CaptureGraph`, result subscriptions, barge-in fades playback); `ral run` (`--play`,
+  `--json`, `--duration`); `load_wav`. Found on the way: offline capture lost frames (now
+  waits instead of dropping, including the end marker); `PlaybackQueue.wait()` now returns
+  at the DAC end time; a stalled producer ends at once when stopped; YAML `off` is a bool.
 
 ### M1 decisions
 
@@ -72,6 +79,11 @@ and `ral models fetch` for the Silero model.
   aarch64 in any release (checked on PyPI), which is the Jetson and Humble target, and the
   engine only needs fixed ratios. RAL has its own numpy polyphase resampler; DESIGN
   section 9 updated. Drift compensation (M3) revisits this.
+- 2026-10-19 (step 9): `AudioSource` stays async-only (closes the M0 open question): the
+  engine bridges to the DSP thread with a bounded queue, lossy for devices, lossless for
+  files.
+- 2026-10-19 (step 9): an interrupt fades only audio already buffered; if the producer has
+  stalled, the item ends at once (the sink is already playing silence).
 - 2026-10-19 (step 7): Silero VAD v6.2.3 instead of v5 (latest release, same interface,
   MIT). Test speech comes from the silero-vad repository (MIT), which answers the open
   question about real speech clips for now.
@@ -201,8 +213,9 @@ Two acceptance items wait for the maintainer: the PortAudio record and play hard
 - M1: if the timeline re-anchors backwards by a frame or more, `t_ns` can go backwards. Rare
   (a very late first callback), and the M1 delay-locked loop should remove it; until then
   it is counted in `reanchors` only.
-- M1: should `AudioSource` gain a blocking `read(timeout)` for the DSP worker thread, or stay
-  async-only (DESIGN section 4 vs section 9 threading model)?
+- Watch: one local test run hung once in step 9 and could not be reproduced in 6 more
+  runs. `faulthandler_timeout = 120` dumps every thread if it happens again; CI jobs time
+  out after 15 minutes.
 - ROS 2 part of `ral doctor` can only be verified on a machine with ROS 2 (Ubuntu dual boot).
 - Re-run `spikes/portaudio_time.py` on Linux (ALSA, PipeWire) and macOS to confirm the clock
   offset mapping there.

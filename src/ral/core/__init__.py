@@ -4,6 +4,7 @@ from ral.core.bus import EventBus, Subscription
 from ral.core.clock import CLOCK_NAME, now_ns
 from ral.core.convert import float32_to_int16, int16_to_float32
 from ral.core.errors import (
+    ConfigError,
     DeviceError,
     DeviceNotFoundError,
     FormatError,
@@ -40,6 +41,7 @@ __all__ = [
     "AudioSource",
     "ChannelMap",
     "ChannelRole",
+    "ConfigError",
     "DeviceBackend",
     "DeviceError",
     "DeviceInfo",

@@ -60,6 +60,7 @@ uv run pytest -m hardware                          # needs real audio devices
 uv run ral --help
 uv run ral doctor                                  # read-only host and device check; --json
 uv run ral models fetch                            # download pinned models (Silero VAD) into the cache
+uv run ral run --profile laptop                    # run the engine; --play clip.wav, --json, --duration
 ```
 
 ## Definition of done for a step

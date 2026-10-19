@@ -34,8 +34,9 @@ import contextlib
 import heapq
 import itertools
 import logging
+import threading
 from collections import deque
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Callable
 from dataclasses import dataclass, field
 
 import numpy as np
@@ -93,6 +94,7 @@ class _Item:
     fade_total: int = field(default=0, compare=False)  # samples; 0 = not fading
     fade_left: int = field(default=0, compare=False)
     interrupted: bool = field(default=False, compare=False)
+    finished: bool = field(default=False, compare=False)
 
 
 class PlaybackQueue:
@@ -127,7 +129,9 @@ class PlaybackQueue:
         self._gain = 1.0
         self._duck_gain = 1.0
         self._duck_until: int | None = None
+        # Read by the DSP thread (speaking_at), written on the loop: guarded by a short lock.
         self._intervals: deque[tuple[int, int | None]] = deque(maxlen=_MAX_INTERVALS)
+        self._intervals_lock = threading.Lock()
         self._timers: set[asyncio.TimerHandle] = set()
         self._results: dict[int, bool] = {}  # handle id -> interrupted, for wait()
 
@@ -142,6 +146,7 @@ class PlaybackQueue:
         """Stop everything at once (no fade) and end the output loop."""
         for item in list(self._items.values()):
             self._finish(item, interrupted=True, t_end=item.t_end_dac)
+            self._resolve(item)
         if self._task is not None:
             self._task.cancel()
             with contextlib.suppress(asyncio.CancelledError):
@@ -183,6 +188,9 @@ class PlaybackQueue:
         """Stop ``handle``: fade it out if playing, drop it if queued; returns once ended."""
         item = self._items.get(handle.id)
         if item is None:
+            return
+        if item.finished:
+            await asyncio.shield(item.done)
             return
         if item is self._active:
             self._begin_fade(item, fade_ms)
@@ -239,8 +247,10 @@ class PlaybackQueue:
         return self._active is not None or bool(self._queue)
 
     def speaking_at(self, t_ns: int) -> bool:
-        """Whether RAL's audio was at the DAC at time ``t_ns``."""
-        for start, end in reversed(self._intervals):
+        """Whether RAL's audio was at the DAC at time ``t_ns``; safe from any thread."""
+        with self._intervals_lock:
+            intervals = list(self._intervals)
+        for start, end in reversed(intervals):
             if start <= t_ns and (end is None or t_ns < end):
                 return True
             if end is not None and end <= t_ns:
@@ -280,8 +290,10 @@ class PlaybackQueue:
             try:
                 frame = item.frames.get_nowait()
             except asyncio.QueueEmpty:
-                if not item.exhausted:
+                if not item.exhausted and not item.fade_total:
                     return None  # the producer is slow; the sink renders silence meanwhile
+                # Finished, or fading with nothing left to fade: the sink already plays
+                # silence after the last frame, so ending here cannot click.
                 self._finish(item, interrupted=item.interrupted, t_end=item.t_end_dac)
                 continue
             data: npt.NDArray[np.float32] = frame.data.astype(np.float32, copy=True)
@@ -296,7 +308,8 @@ class PlaybackQueue:
         item.t_end_dac = t_dac + self.fmt.frame_ns
         if item.t_start_dac is None:
             item.t_start_dac = t_dac
-            self._intervals.append((t_dac, None))
+            with self._intervals_lock:
+                self._intervals.append((t_dac, None))
             self._publish_at(
                 PlaybackStarted(
                     t_dac,
@@ -384,18 +397,20 @@ class PlaybackQueue:
         return data * ramp[:, None]
 
     def _finish(self, item: _Item, *, interrupted: bool, t_end: int | None) -> None:
-        if item.done.done():
+        if item.finished:
             return
+        item.finished = True
+        item.interrupted = interrupted
         if self._active is item:
             self._active = None
-        self._items.pop(item.handle.id, None)
         if item.pump is not None and not item.pump.done():
             item.pump.cancel()
         if item.t_start_dac is not None and t_end is not None:
-            for i in range(len(self._intervals) - 1, -1, -1):
-                if self._intervals[i] == (item.t_start_dac, None):
-                    self._intervals[i] = (item.t_start_dac, t_end)
-                    break
+            with self._intervals_lock:
+                for i in range(len(self._intervals) - 1, -1, -1):
+                    if self._intervals[i] == (item.t_start_dac, None):
+                        self._intervals[i] = (item.t_start_dac, t_end)
+                        break
             self._publish_at(
                 PlaybackEnded(
                     t_end,
@@ -405,26 +420,34 @@ class PlaybackQueue:
                     interrupted=interrupted,
                 )
             )
-        item.done.set_result(interrupted)
         self._results[item.handle.id] = interrupted
         if len(self._results) > _MAX_INTERVALS:
             del self._results[next(iter(self._results))]
         self._wake.set()
+        # wait() returns when the sound has left the speaker, not when it was written.
+        self._call_at(t_end, lambda: self._resolve(item))
 
-    def _publish_at(self, event: Event) -> None:
-        if self.bus is None:
-            return
-        delay = (event.t_ns - now_ns()) / 1e9
+    def _resolve(self, item: _Item) -> None:
+        self._items.pop(item.handle.id, None)
+        if not item.done.done():
+            item.done.set_result(item.interrupted)
+
+    def _call_at(self, t_ns: int | None, fn: Callable[[], None]) -> None:
+        delay = 0.0 if t_ns is None else (t_ns - now_ns()) / 1e9
         if not self.writer.realtime or delay <= 0:
-            self.bus.publish(event)
+            fn()
             return
         loop = asyncio.get_running_loop()
         timer: asyncio.TimerHandle
 
         def fire() -> None:
             self._timers.discard(timer)
-            assert self.bus is not None
-            self.bus.publish(event)
+            fn()
 
         timer = loop.call_later(delay, fire)
         self._timers.add(timer)
+
+    def _publish_at(self, event: Event) -> None:
+        bus = self.bus
+        if bus is not None:
+            self._call_at(event.t_ns, lambda: bus.publish(event))
