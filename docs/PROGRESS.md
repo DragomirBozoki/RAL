@@ -13,8 +13,8 @@ and `ral models fetch` for the Silero model.
 | 3 | Events and `EventBus` | done |
 | 4 | Playback service | done |
 | 5 | Echo controllers (`software_ref`, `gate`) | done |
-| 6 | Noise suppression, high-pass, AGC; energy VAD | next |
-| 7 | Silero VAD | |
+| 6 | Noise suppression, high-pass, AGC; energy VAD | done |
+| 7 | Silero VAD | next |
 | 8 | Barge-in and self-trigger metric | |
 | 9 | `Engine` and `ral run` | |
 | 10 | MCAP recorder | |
@@ -45,6 +45,10 @@ and `ral models fetch` for the Silero model.
   (8 s scene, lead 20 ms): ERLE 44 / 50 / 49 / 37 dB at 5 / 20 / 50 / 120 ms echo delay;
   with the reference 30 ms late, 10 / 16 dB at 5 / 20 ms (the test requires below 15 at
   5 ms). Spike `spikes/apm_lag.py`: APM lag AEC 8 ms, NS 6 ms, additive.
+- **Step 6.** `ral.dsp.vad` (`VadStateMachine` shared by all VAD engines, `EnergyVad` with
+  an adaptive noise floor) and `ral.dsp.pipeline.build_capture_chain` (merges NS, high-pass
+  and AGC into the AEC APM in `software_ref`, or runs them after the gate). APM noise
+  suppression lowers stationary white noise by more than 10 dB in the test.
 
 ### M1 decisions
 

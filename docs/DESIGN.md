@@ -360,6 +360,10 @@ A reference that reaches the echo canceller after its echo cannot be cancelled. 
 
 A barge-in fires only when all of these hold: VAD detects speech in the echo-cancelled residual; the double-talk detector sees residual energy clearly above the predicted echo; speech lasts at least a minimum time (default 250 ms, configurable); and the residual does not correlate with the reference (the echo-leak guard). On barge-in, the current playback fades out and bridges tell the agent to cancel its turn. Policies: `off`, `energy`, `vad`, `vad+dtd` (default).
 
+All VAD engines share one state machine: speech starts when the probability stays at or above the threshold for `min_speech_ms` (with 0.15 of hysteresis), and ends after `hangover_ms` of non-speech. `SpeechStarted.t_ns` is the first speech sample and `SpeechEnded.t_ns` the end of the last speech window, so the hangover shows up in the latency breakdown instead of in the timestamps. The energy VAD (no dependencies) compares the frame level with a noise floor that falls fast and rises at 2 dB/s.
+
+Noise suppression, the high-pass filter and gain control run in the same WebRTC APM instance as AEC in `software_ref` (one module, lags add up); in `gate` and `off` modes they run as a separate APM stage after the gate.
+
 Silero VAD v5 works on 512-sample windows at 16 kHz (32 ms), so the VAD stage buffers 10 ms frames and stamps events with the window's capture time. Run the ONNX model directly with onnxruntime; the `silero-vad` pip package pulls in PyTorch, which is too heavy for robots.
 
 ### Latency targets
