@@ -183,6 +183,6 @@ async def test_realtime_paces_and_publishes_at_dac_time(rig_factory: RigFactory)
         elapsed = now_ns() - t0
         ended = await asyncio.wait_for(rig.events.get(), 2)
         assert isinstance(ended, ev.PlaybackEnded)
-    # 300 ms of audio; the writer may run at most ahead_ms (40) early.
+    # 300 ms of audio; the writer may run at most its lead (40 to 62 ms) early.
     assert elapsed > 220_000_000
     assert ended.t_ns - started.t_ns == 300_000_000

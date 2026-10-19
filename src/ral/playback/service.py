@@ -10,7 +10,10 @@ out and is dropped, not resumed. Suggested priorities: alerts 90, speech 50, ear
 music 10. TODO(M2): mix concurrent items (music under speech) instead of preempting.
 
 Each item's async iterator is read by its own pump task into a short queue, so a slow
-producer (streaming TTS) never stalls the output loop: if no frame is ready when the
+producer (streaming TTS) never stalls the output loop. An item starts once
+``prebuffer_frames`` (30 ms) are queued or its producer has finished, a small jitter
+buffer that lets the writer get ahead of the device before the first gap can happen.
+Afterwards, if no frame is ready when the
 device needs one, nothing is written and the sink renders silence, which also reaches the
 reference buffer, so the echo canceller's timeline stays continuous.
 
@@ -86,6 +89,7 @@ class _Item:
     exhausted: bool = field(default=False, compare=False)
     t_request_ns: int | None = field(default=None, compare=False)
     t_start_dac: int | None = field(default=None, compare=False)
+    t_end_dac: int | None = field(default=None, compare=False)  # end of the last frame written
     fade_total: int = field(default=0, compare=False)  # samples; 0 = not fading
     fade_left: int = field(default=0, compare=False)
     interrupted: bool = field(default=False, compare=False)
@@ -101,9 +105,15 @@ class PlaybackQueue:
     """
 
     def __init__(
-        self, writer: SinkWriter, bus: EventBus | None = None, session_id: str = ""
+        self,
+        writer: SinkWriter,
+        bus: EventBus | None = None,
+        session_id: str = "",
+        *,
+        prebuffer_frames: int = 3,
     ) -> None:
         self.writer = writer
+        self.prebuffer_frames = prebuffer_frames
         self.fmt = writer.in_fmt
         self.bus = bus
         self.session_id = session_id
@@ -131,7 +141,7 @@ class PlaybackQueue:
     async def close(self) -> None:
         """Stop everything at once (no fade) and end the output loop."""
         for item in list(self._items.values()):
-            self._finish(item, interrupted=True, t_end=self.writer.cursor_ns)
+            self._finish(item, interrupted=True, t_end=item.t_end_dac)
         if self._task is not None:
             self._task.cancel()
             with contextlib.suppress(asyncio.CancelledError):
@@ -262,6 +272,9 @@ class PlaybackQueue:
             if self._active is None:
                 if not self._queue:
                     return None
+                head = self._queue[0]
+                if head.frames.qsize() < self.prebuffer_frames and not head.exhausted:
+                    return None  # jitter buffer: start once a few frames are ready
                 self._active = heapq.heappop(self._queue)
             item = self._active
             try:
@@ -269,7 +282,7 @@ class PlaybackQueue:
             except asyncio.QueueEmpty:
                 if not item.exhausted:
                     return None  # the producer is slow; the sink renders silence meanwhile
-                self._finish(item, interrupted=item.interrupted, t_end=self.writer.cursor_ns)
+                self._finish(item, interrupted=item.interrupted, t_end=item.t_end_dac)
                 continue
             data: npt.NDArray[np.float32] = frame.data.astype(np.float32, copy=True)
             if item.fade_total:
@@ -280,6 +293,7 @@ class PlaybackQueue:
         item = self._active
         assert item is not None
         t_dac = self.writer.write(self._apply_duck(data))
+        item.t_end_dac = t_dac + self.fmt.frame_ns
         if item.t_start_dac is None:
             item.t_start_dac = t_dac
             self._intervals.append((t_dac, None))
@@ -294,7 +308,7 @@ class PlaybackQueue:
             )
         if item.fade_total and item.fade_left == 0:
             # The fade ended inside this frame: the item ends with it.
-            self._finish(item, interrupted=True, t_end=t_dac + self.fmt.frame_ns)
+            self._finish(item, interrupted=True, t_end=item.t_end_dac)
 
     def _maybe_preempt(self) -> None:
         active = self._active

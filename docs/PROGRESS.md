@@ -15,8 +15,8 @@ and `ral models fetch` for the Silero model.
 | 5 | Echo controllers (`software_ref`, `gate`) | done |
 | 6 | Noise suppression, high-pass, AGC; energy VAD | done |
 | 7 | Silero VAD | done |
-| 8 | Barge-in and self-trigger metric | next |
-| 9 | `Engine` and `ral run` | |
+| 8 | Barge-in and self-trigger metric | done |
+| 9 | `Engine` and `ral run` | next |
 | 10 | MCAP recorder | |
 | 11 | WebSocket bridge | |
 | 12 | LiveKit bridge | |
@@ -54,6 +54,17 @@ and `ral models fetch` for the Silero model.
   with 64 samples of context, one thread, about 120 us per 10 ms frame); real speech clip
   `tests/data/speech_16k.wav` (silero-vad test clip excerpt, MIT, with its script and
   licence). CI downloads the model before the tests. Spike `spikes/silero_io.py`.
+- **Step 8.** `ral.engine.capture.CaptureGraph` (normalizer, reference by DAC time,
+  speaking state, stages; no threads); `ral.dsp.bargein.BargeInDetector` (`off`, `energy`,
+  `vad`, `vad+dtd` with learned leak, tail-aware echo prediction and the echo-leak guard);
+  `ral.metrics.selftrigger`; `ral.bench.offline.run_scene`. CI scene: self-trigger 31/min
+  without AEC, 4.4/min with `software_ref`; barge-in at 12.0 s for a user starting at
+  12.0 s; plain VAD barge-in interrupts itself on echo, `vad+dtd` does not.
+- **Fixes during step 8.** CI was red from M1 step 1 to 7 (mypy with numpy 2.2 on 3.10;
+  fixed in c2fab32; I had not checked CI after each push, now I do). Synthetic echo tail
+  normalised (it clipped the mic). Playback: `PlaybackEnded` uses the end of the last frame
+  written; items start after a 30 ms jitter buffer; the writer lead covers four asyncio
+  timer ticks (Windows before 3.13 has 15.6 ms ticks). The local check now runs 3.10 too.
 
 ### M1 decisions
 

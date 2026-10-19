@@ -68,15 +68,26 @@ def voice(n: int, rate: int, f0: float, seed: int) -> Signal:
 
 
 def echo_path(
-    delay_ms: float, rate: int, seed: int, *, tail_s: float = 0.25, decay_s: float = 0.05
+    delay_ms: float,
+    rate: int,
+    seed: int,
+    *,
+    tail_s: float = 0.25,
+    decay_s: float = 0.05,
+    tail_db: float = -6.0,
 ) -> Signal:
-    """Pure delay plus a decaying random tail (``decay_s`` is the 1/e time)."""
+    """Direct path after ``delay_ms`` plus a decaying random tail (reverberation).
+
+    ``decay_s`` is the tail's 1/e amplitude time; ``tail_db`` its total energy relative
+    to the direct path (a speaker close to the mics: the direct sound dominates).
+    """
     rng = np.random.default_rng(seed)
     d = round(delay_ms * rate / 1000)
     h = np.zeros(d + int(tail_s * rate))
     h[d] = 1.0
-    tail = np.arange(len(h) - d - 1)
-    h[d + 1 :] = 0.4 * rng.standard_normal(len(tail)) * np.exp(-tail / (decay_s * rate))
+    n = np.arange(len(h) - d - 1)
+    tail = rng.standard_normal(len(n)) * np.exp(-n / (decay_s * rate))
+    h[d + 1 :] = tail * np.sqrt(10 ** (tail_db / 10) / np.sum(tail**2))
     return h
 
 
