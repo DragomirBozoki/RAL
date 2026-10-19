@@ -6,6 +6,7 @@ import typer
 from rich.console import Console
 
 from ral import __version__
+from ral.cli import models
 from ral.cli.doctor import doctor
 
 app = typer.Typer(
@@ -37,3 +38,4 @@ def main(
 
 
 app.command()(doctor)
+app.add_typer(models.app, name="models")

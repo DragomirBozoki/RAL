@@ -14,8 +14,8 @@ and `ral models fetch` for the Silero model.
 | 4 | Playback service | done |
 | 5 | Echo controllers (`software_ref`, `gate`) | done |
 | 6 | Noise suppression, high-pass, AGC; energy VAD | done |
-| 7 | Silero VAD | next |
-| 8 | Barge-in and self-trigger metric | |
+| 7 | Silero VAD | done |
+| 8 | Barge-in and self-trigger metric | next |
 | 9 | `Engine` and `ral run` | |
 | 10 | MCAP recorder | |
 | 11 | WebSocket bridge | |
@@ -49,6 +49,11 @@ and `ral models fetch` for the Silero model.
   an adaptive noise floor) and `ral.dsp.pipeline.build_capture_chain` (merges NS, high-pass
   and AGC into the AEC APM in `software_ref`, or runs them after the gate). APM noise
   suppression lowers stationary white noise by more than 10 dB in the test.
+- **Step 7.** `ral.models` and `ral models list|fetch` (pinned URL and SHA-256, user
+  cache, `$RAL_MODELS_DIR`); `ral.dsp.silero.SileroVad` (onnxruntime, 512-sample windows
+  with 64 samples of context, one thread, about 120 us per 10 ms frame); real speech clip
+  `tests/data/speech_16k.wav` (silero-vad test clip excerpt, MIT, with its script and
+  licence). CI downloads the model before the tests. Spike `spikes/silero_io.py`.
 
 ### M1 decisions
 
@@ -56,6 +61,9 @@ and `ral models fetch` for the Silero model.
   aarch64 in any release (checked on PyPI), which is the Jetson and Humble target, and the
   engine only needs fixed ratios. RAL has its own numpy polyphase resampler; DESIGN
   section 9 updated. Drift compensation (M3) revisits this.
+- 2026-10-19 (step 7): Silero VAD v6.2.3 instead of v5 (latest release, same interface,
+  MIT). Test speech comes from the silero-vad repository (MIT), which answers the open
+  question about real speech clips for now.
 
 ## M0, Foundations (done 2026-10-19; CI green)
 

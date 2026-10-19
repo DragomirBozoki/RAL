@@ -364,7 +364,7 @@ All VAD engines share one state machine: speech starts when the probability stay
 
 Noise suppression, the high-pass filter and gain control run in the same WebRTC APM instance as AEC in `software_ref` (one module, lags add up); in `gate` and `off` modes they run as a separate APM stage after the gate.
 
-Silero VAD v5 works on 512-sample windows at 16 kHz (32 ms), so the VAD stage buffers 10 ms frames and stamps events with the window's capture time. Run the ONNX model directly with onnxruntime; the `silero-vad` pip package pulls in PyTorch, which is too heavy for robots.
+Silero VAD (v6.2.3, pinned) works on 512-sample windows at 16 kHz (32 ms), each preceded by the previous window's last 64 samples (without that context the model returns almost zero on real speech; `spikes/silero_io.py`), so the VAD stage buffers 10 ms frames and stamps events with the window's capture time; other engine rates are resampled to 16 kHz. Run the ONNX model directly with onnxruntime on one thread; the `silero-vad` pip package pulls in PyTorch, which is too heavy for robots. The model is not bundled: `ral models fetch silero_vad` downloads it from the official repository, checks its SHA-256 and caches it (`$RAL_MODELS_DIR` or the user cache directory). onnxruntime 1.23 is the last release with CPython 3.10 wheels, so 3.10 installs stay on it.
 
 ### Latency targets
 

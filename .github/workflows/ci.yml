@@ -46,6 +46,8 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y --no-install-recommends libportaudio2
       - run: uv sync --all-extras --python ${{ matrix.python }}
       - run: uv run mypy src
+      - name: Download the Silero VAD model for its tests
+        run: uv run ral models fetch silero_vad
       - run: uv run pytest
       - run: uv run ral --version
 
