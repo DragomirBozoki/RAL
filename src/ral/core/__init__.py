@@ -1,5 +1,6 @@
 """Core types, errors and conversions shared by every RAL module."""
 
+from ral.core.bus import EventBus, Subscription
 from ral.core.clock import CLOCK_NAME, now_ns
 from ral.core.convert import float32_to_int16, int16_to_float32
 from ral.core.errors import (
@@ -9,6 +10,7 @@ from ral.core.errors import (
     MissingDependencyError,
     RalError,
 )
+from ral.core.events import Event, event_from_json, event_to_json
 from ral.core.framer import Framer
 from ral.core.protocols import (
     AudioSink,
@@ -40,6 +42,8 @@ __all__ = [
     "DeviceError",
     "DeviceInfo",
     "DeviceNotFoundError",
+    "Event",
+    "EventBus",
     "FormatError",
     "Framer",
     "MissingDependencyError",
@@ -50,6 +54,9 @@ __all__ = [
     "RenderHook",
     "RingBuffer",
     "SampleDtype",
+    "Subscription",
+    "event_from_json",
+    "event_to_json",
     "float32_to_int16",
     "int16_to_float32",
     "now_ns",

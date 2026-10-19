@@ -290,7 +290,7 @@ class Bridge(Protocol):
 
 ### Events
 
-`SpeechStarted`, `SpeechEnded`, `BargeIn`, `PlaybackStarted` (first sample estimated at the DAC), `PlaybackEnded`, `WordTiming`, `DirectionOfArrival`, `EchoLeak` (robot speech detected in the cleaned signal), `DeviceLost`, `Xrun`, `Clipping`, `ProfileReloaded`. Every event is a frozen dataclass deriving from `Event`, carries a monotonic timestamp and the session id, and serialises to JSON as `{"type": "<ClassName>", ...}` for sockets and recordings.
+`SpeechStarted`, `SpeechEnded`, `BargeIn`, `PlaybackStarted` (first sample estimated at the DAC), `PlaybackEnded`, `WordSpoken` (a TTS word timing re-stamped to DAC time; named so it does not clash with the port's `WordTiming` record), `DirectionOfArrival`, `EchoLeak` (robot speech detected in the cleaned signal), `DeviceLost`, `Xrun`, `Clipping`, `ProfileReloaded`, `RecordingStarted`, `RecordingStopped`. Every event is a frozen dataclass deriving from `Event`, carries a monotonic timestamp (for audio events, when the sound was at the ADC or DAC, not when the event was emitted) and the session id, and serialises to JSON as `{"type": "<ClassName>", ...}` for sockets and recordings. Subclasses from plugins deserialise without registration. The `EventBus` (asyncio) never blocks a publisher: each subscriber has a bounded queue and a slow subscriber loses its oldest events; the DSP thread publishes through `publish_threadsafe`.
 
 ### Plugin system
 
