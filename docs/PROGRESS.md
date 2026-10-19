@@ -19,8 +19,8 @@ and `ral models fetch` for the Silero model.
 | 9 | `Engine` and `ral run` | done |
 | 10 | MCAP recorder | done |
 | 11 | WebSocket bridge | done |
-| 12 | LiveKit bridge | next |
-| 13 | Latency report and demo recording | |
+| 12 | LiveKit bridge | done |
+| 13 | Latency report and demo recording | next |
 
 ### M1 done
 
@@ -83,6 +83,13 @@ and `ral models fetch` for the Silero model.
   (protocol v1, localhost by default); `ral.playback.stream.PcmStream` (pushed PCM of any
   chunk size as one playback item); `ral run --bridge NAME`; `examples/websocket_client.py`.
   `server` extra: `websockets` (BSD-3).
+- **Step 12.** `ral.bridges.livekit.LiveKitBridge` (clean mic track out, agent audio in as
+  utterances through the playback service, events as data, control messages in, token
+  minting) and `UtteranceSegmenter`; `livekit` extra adds `livekit-api` (Apache-2.0; its
+  dependencies are MIT, BSD and Apache-2.0). Integration test against `livekit-server
+  --dev` 1.13.10 passed locally (`RAL_TEST_LIVEKIT_URL`, skipped in CI). Spike
+  `spikes/livekit_room.py`: 10 ms frames both ways, about 64 ms through a local room.
+  Example profile and instructions in `examples/livekit_agent/`.
 
 ### M1 decisions
 

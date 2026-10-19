@@ -42,6 +42,10 @@ dsp = [
     "livekit>=1.0",      # Apache-2.0; WebRTC APM (echo, noise, gain)
     "onnxruntime>=1.17", # MIT; Silero VAD. 1.23 is the last release with CPython 3.10 wheels
 ]
+livekit = [
+    "livekit>=1.0",      # Apache-2.0; rooms and tracks
+    "livekit-api>=1.0",  # Apache-2.0; access tokens
+]
 record = [
     "mcap>=1.1",         # MIT; session recordings readable in Foxglove
 ]

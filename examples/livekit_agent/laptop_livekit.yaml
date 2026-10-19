@@ -1,0 +1,17 @@
+# The laptop profile plus the LiveKit bridge. Credentials come from .env (see .env.example).
+ral: 1
+robot: {model: laptop}
+capture: {backend: portaudio, channels: [mic]}
+playback: {backend: portaudio}
+echo: {mode: software_ref, lead_ms: 20}
+pipeline: [aec, noise_suppression, high_pass, vad]
+vad: {engine: silero}
+barge_in: {policy: vad+dtd}
+bridges:
+  livekit:
+    url: "${LIVEKIT_URL}"
+    room: "${LIVEKIT_ROOM:-ral-demo}"
+    identity: robot
+    api_key: "${LIVEKIT_API_KEY}"
+    api_secret: "${LIVEKIT_API_SECRET}"
+recording: {enabled: false}
