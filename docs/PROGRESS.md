@@ -1,6 +1,6 @@
 # Progress
 
-## Current milestone: M0, Foundations (code complete; waiting for review and CI)
+## Current milestone: M0, Foundations (code complete, CI green; waiting for review)
 
 See `docs/DESIGN.md` section 10. M1 is proposed under "Next" and not started.
 
@@ -51,8 +51,8 @@ See `docs/DESIGN.md` section 10. M1 is proposed under "Next" and not started.
 
 | Criterion | State |
 |---|---|
-| Installs with pip and uv on Linux, Windows and macOS | uv and the 3.10 env verified on Windows; Linux and macOS through CI, not run yet |
-| CI green on Linux x86_64, Linux arm64 and Windows | not run yet: nothing has been pushed |
+| Installs with pip and uv on Linux, Windows and macOS | yes (CI run 39236835319, 2026-10-19: uv on all four, pip on Linux, Windows and macOS) |
+| CI green on Linux x86_64, Linux arm64 and Windows | yes (same run, Python 3.10 and 3.12, plus macOS 3.12 and the licence check) |
 | Framer tests pass for random block sizes | yes |
 | `FileBackend` round trip is bit-exact | yes (int16 and float32, 1 to 6 channels) |
 | On a laptop, `ral doctor` lists devices | yes, on the maintainer's Windows laptop |
