@@ -12,8 +12,8 @@ and `ral models fetch` for the Silero model.
 | 2 | `ReferenceBuffer` | done |
 | 3 | Events and `EventBus` | done |
 | 4 | Playback service | done |
-| 5 | Echo controllers (`software_ref`, `gate`) | next |
-| 6 | Noise suppression, high-pass, AGC; energy VAD | |
+| 5 | Echo controllers (`software_ref`, `gate`) | done |
+| 6 | Noise suppression, high-pass, AGC; energy VAD | next |
 | 7 | Silero VAD | |
 | 8 | Barge-in and self-trigger metric | |
 | 9 | `Engine` and `ral run` | |
@@ -38,6 +38,13 @@ and `ral models fetch` for the Silero model.
   (resample, upmix, dtype, realtime pacing with `ahead_ms`, DAC-time cursor) and
   `ral.playback.PlaybackQueue` (priorities, preemption, raised-cosine fades, ducking,
   `interrupt`, `wait`, `speaking_at`, events at DAC time); `audio_frames()` helper.
+- **Step 5.** `ral.core.processing` (`FrameContext` with `info`, `Processor`);
+  `ral.dsp.echo` (`EchoOff`, `ApmProcessor` for `software_ref` with a continuous reverse
+  stream and lag-corrected `t_ns`, `DuplexGate` for `gate` with a learned echo level);
+  `ral.bench.synthetic` (echo scenes) and `ral.metrics.echo.erle_db`. CI test numbers
+  (8 s scene, lead 20 ms): ERLE 44 / 50 / 49 / 37 dB at 5 / 20 / 50 / 120 ms echo delay;
+  with the reference 30 ms late, 10 / 16 dB at 5 / 20 ms (the test requires below 15 at
+  5 ms). Spike `spikes/apm_lag.py`: APM lag AEC 8 ms, NS 6 ms, additive.
 
 ### M1 decisions
 

@@ -208,6 +208,7 @@ class FrameContext:
     reference: list[AudioFrame]    # reference frames fed to echo control for this mic frame
     robot_speaking: bool
     events: list[Event]            # stages append events; the engine publishes them
+    info: dict[str, float]         # per-frame measurements shared by stages (mic_db, out_db, ref_db, echo_db)
 
 
 class Processor(Protocol):
@@ -322,6 +323,7 @@ Echo control picks one of four modes from what the hardware offers. The engine's
 | `loopback` | The capture stream already contains reference channels on the same clock (common on robot HALs that return mic and speaker loopback together) | WebRTC AEC3 with the reference channels; delay is small and stable | Good |
 | `software_ref` | RAL is the only thing that plays audio, but no loopback exists | The reference is exactly what RAL rendered, with its estimated DAC time; delay comes from the probe and is tracked online; drift is compensated when capture and playback use different clocks | Good when delay is stable; weaker with drift or distorting speakers |
 | `gate` | Audio is played by something RAL cannot see | Mic is attenuated while speech plays plus a tail; barge-in only above the learned echo level, by keyword, or by a button | Usable fallback, not full duplex. `ral doctor` says why you ended up here |
+| `off` | Benchmarks only | The selected mic passes through unchanged | The baseline that `ral bench` and the CI echo tests compare against |
 
 The default AEC engine is WebRTC APM through the LiveKit Python SDK. Its `AudioProcessingModule` offers echo cancellation, noise suppression, high-pass filtering and gain control, with `process_stream` for the mic, `process_reverse_stream` for the far end, `set_stream_delay_ms`, and exactly 10 ms frames. LiveKit's `rtc.AudioFrame` carries int16 samples, so this stage converts float32 frames to int16 and back. Other engines (SpeexDSP, vendor DSPs) plug in as processors.
 
@@ -331,7 +333,8 @@ A reference that reaches the echo canceller after its echo cannot be cancelled. 
 
 - **`loopback`:** reference and mics share a frame and a clock. For each frame the engine feeds the reference channels to the reverse stream first, then processes the mic channel, with a stream delay near zero. An optional mic delay of a few milliseconds adds headroom.
 - **`software_ref`:** the sink's render hook pushes every block handed to the device, silence included, into the `ReferenceBuffer` together with its estimated DAC time. Before processing the mic frame captured at `t`, the engine feeds the reverse stream every reference frame whose estimated DAC time is earlier than `t + lead`, then processes the mic frame and passes `lead` as the stream delay. The reference therefore precedes its echo by roughly `lead` even when estimates are a few milliseconds off, and AEC3's internal delay estimator finds the exact offset. `lead` is tunable; the default is 20 ms (range 10 to 30 ms), settled with `ral bench`. On synthetic echo (`spikes/apm_feasibility.py`) AEC3 reached the same ERLE whether the hint was 0, `lead` or `lead` plus the true delay, while a reference 30 ms late dropped ERLE from about 36 to 7 dB. Frames already rendered but not yet played are available, so a lead up to the output buffering is always possible.
-- **APM output lag:** with echo cancellation on, the APM's output trails its input by 8 ms at 16 kHz (14 ms with noise suppression), measured in the same spike. The echo controller therefore stamps clean frames with the capture time of the samples they carry (`t_ns` minus the lag), and the lag appears in the latency breakdown.
+- **Continuous reverse stream:** the `software_ref` controller keeps the reverse stream continuous in DAC time up to `t + lead`: holes (nothing rendered, as with an idle offline sink) are filled with silent frames, and a reference frame for time already covered is late anyway and is dropped and counted. AEC3 behaves differently without a steady render stream (even its output lag changes), so this matters.
+- **APM output lag:** the APM's output trails its input by 8 ms with echo cancellation and 6 ms with noise suppression, and the two add up (14 ms); the high-pass filter and gain control add nothing (`spikes/apm_lag.py`, re-checked by the tests on every livekit version). The echo controller therefore stamps clean frames with the capture time of the samples they carry (`t_ns` minus the lag), and the lag appears in the latency breakdown.
 - **ROS 2 sinks:** the DAC time is unknown, so it is estimated as publish time plus `playback.latency_ms` measured by the probe.
 
 ### Clocks, delay and drift
