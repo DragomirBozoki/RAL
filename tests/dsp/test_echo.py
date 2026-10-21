@@ -168,3 +168,28 @@ def test_select_mic() -> None:
     )
     with pytest.raises(FormatError):
         select_mic(ref_only, 0)
+
+
+# loopback (M2): the reference arrives in the capture stream on the mics' clock.
+
+
+@pytest.mark.parametrize("mic_delay_ms", [0, 5])
+def test_loopback_cancels_echo_from_capture_reference(
+    apm_module: object, mic_delay_ms: int
+) -> None:
+    from ral.bench.offline import run_scene
+    from ral.dsp.echo import ApmProcessor
+
+    scene = echo_scene(seconds=8, delay_ms=20)
+    proc = ApmProcessor(reference="channels", mic_delay_ms=mic_delay_ms)
+    run = run_scene(scene, [proc], software_ref=False, loopback_ms=1.0)
+    assert proc.lag_ms == 8 + mic_delay_ms
+    assert aligned_erle(scene, run.clean, proc.lag_ms) > 25.0
+
+
+def test_loopback_without_reference_channels_explains_itself(apm_module: object) -> None:
+    from ral.dsp.echo import ApmProcessor
+
+    proc = ApmProcessor(reference="channels")
+    with pytest.raises(FormatError, match="reference channels"):
+        proc.process(mic_frames(np.zeros(160, np.float32))[0], FrameContext("s"))

@@ -25,7 +25,7 @@ def run(
     play: Path | None = typer.Option(None, help="Play this WAV file through RAL once started."),
     json_events: bool = typer.Option(False, "--json", help="Print events as JSON lines."),
     echo: str | None = typer.Option(
-        None, "--echo", help="Override the echo mode: software_ref, gate or off."
+        None, "--echo", help="Override the echo mode: software_ref, loopback, gate or off."
     ),
     bridge: list[str] = typer.Option(
         [], "--bridge", "-b", help="Also start this bridge with default settings (repeatable)."
@@ -50,8 +50,8 @@ def run(
         for name in bridge:
             prof.bridges.setdefault(name, {})
         if echo is not None:
-            if echo not in ("software_ref", "gate", "off"):
-                console.print(f"[red]--echo must be software_ref, gate or off, not {echo!r}[/red]")
+            if echo not in ("software_ref", "loopback", "gate", "off"):
+                console.print(f"[red]--echo must be an echo mode, not {echo!r}[/red]")
                 raise typer.Exit(2)
             prof.echo.mode = echo  # type: ignore[assignment]
         asyncio.run(_run(prof, duration, play, json_events, record))

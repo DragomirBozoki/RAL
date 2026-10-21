@@ -1,6 +1,41 @@
 # Progress
 
-## Current milestone: M1, echo-free conversation on a laptop (v0.1): code complete, waiting for the laptop demo
+## Current milestone: M2, robots and measurement (v0.2)
+
+See `docs/DESIGN.md` section 10. Approved 2026-10-21: all steps in a row with commit, push
+and CI after each; Pipecat as a separate package under `integrations/pipecat` (it needs
+Python 3.11+ and pulls LGPL `soxr`); `pyroomacoustics` as a dev dependency with a marker (no
+wheel for 3.10 on Linux aarch64; those tests skip there); ROS 2 written against the rclpy
+docs and tested with fakes, to be run on Ubuntu by the maintainer. The order changed from
+the M1 proposal so the room simulation can cover every echo mode.
+
+| Step | What | Status |
+|---|---|---|
+| 1 | `loopback` echo mode | done |
+| 2 | `hardware` echo mode and device database | next |
+| 3 | Simulated rooms in CI for every echo mode | |
+| 4 | Replay of recordings and `ral bench` | |
+| 5 | `ral probe` | |
+| 6 | Profile migrations and registry | |
+| 7 | ROS 2 backend and `ral_ros` | |
+| 8 | Pipecat transport (`integrations/pipecat`) | |
+
+### M2 done
+
+- **Step 1.** `loopback` mode: `ApmProcessor(reference="channels", mic_delay_ms=...)` feeds
+  the frame's own `reference` channels (mean, same clock) to the reverse stream before the
+  mic, with an optional mic delay line whose length is passed as the stream delay and added
+  to the lag. Profile `echo.mode: loopback`, `echo.mic_delay_ms`; `run_scene` takes a capture
+  matrix with roles or `loopback_ms`. Synthetic ERLE 44 dB at 5, 20 and 120 ms echo delay,
+  with or without a 5 ms mic delay.
+
+### M2 decisions
+
+- 2026-10-21 (step 1): in `loopback` the reference is the mean of the `reference` channels;
+  stereo loopbacks of a mono speaker feed are the common case. The mic delay defaults to 0
+  because the loopback already leads its acoustic echo by the speaker-to-mic path.
+
+## M1, echo-free conversation on a laptop (v0.1): code complete, laptop demo pending
 
 See `docs/DESIGN.md` section 10. Approved 2026-10-19: all 13 steps in a row (commit and
 push after each), every new dependency in the plan, `websockets` for the WebSocket bridge,
@@ -22,7 +57,7 @@ and `ral models fetch` for the Silero model.
 | 12 | LiveKit bridge | done |
 | 13 | Latency report and demo recording | done (demo recording waits for the maintainer) |
 
-### M1 done
+#### M1 done
 
 - **Step 1.** `ral.dsp.resample.Resampler` (streaming polyphase FIR, time-aligned, about
   -85 dB error and -90 dB aliasing, about 100 us per 10 ms frame at 48 kHz) and
@@ -95,7 +130,7 @@ and `ral models fetch` for the Silero model.
   `ral run` prints median and p90 per stage at the end; `ral run --echo MODE` overrides the
   profile for A/B listening.
 
-### M1 acceptance (DESIGN section 10)
+#### M1 acceptance (DESIGN section 10)
 
 | Criterion | State |
 |---|---|
@@ -104,7 +139,7 @@ and `ral models fetch` for the Silero model.
 | Every turn produces a latency breakdown | yes (`TurnLatency`, tested end to end on the file backend) |
 | A 2-minute demo recording exists | waits for the maintainer (commands below) |
 
-### Maintainer tasks (laptop with speaker and mic)
+#### Maintainer tasks (laptop with speaker and mic)
 
 1. M0 hardware tests: `uv run pytest -m hardware`. Expect 3 passed (discovery, a short
    recording, a short tone).
@@ -130,7 +165,7 @@ and `ral models fetch` for the Silero model.
    The recording lands in `recordings/ral-<session>.mcap` (open it in Foxglove); the turn
    latency table prints at the end. Recordings are ignored by git.
 
-### M1 decisions
+#### M1 decisions
 
 - 2026-10-19 (step 1): no `samplerate` dependency. It has no CPython 3.10 wheel for Linux
   aarch64 in any release (checked on PyPI), which is the Jetson and Humble target, and the
@@ -144,20 +179,6 @@ and `ral models fetch` for the Silero model.
 - 2026-10-19 (step 7): Silero VAD v6.2.3 instead of v5 (latest release, same interface,
   MIT). Test speech comes from the silero-vad repository (MIT), which answers the open
   question about real speech clips for now.
-
-## Next: proposed M2 (robots and measurement, v0.2), not started
-
-Following DESIGN section 10, each step with tests, one commit and a stop for review:
-
-1. `ral bench` and offline replay of MCAP recordings through another configuration
-   (side-by-side ERLE, self-trigger rate, barge-in and latency).
-2. Simulated-room tests (pyroomacoustics, MIT) for every echo mode in CI.
-3. `ral probe`: noise floor, sweep, channel roles, delay and echo gain, profile writer.
-4. `hardware` echo mode and the device database (XVF3800-class arrays first).
-5. `loopback` echo mode (reference channels in the capture stream).
-6. ROS 2 topic backend and `ral_ros` bridge node (on the Ubuntu machine).
-7. Pipecat transport.
-8. Profile schema migrations and the profile registry.
 
 ## M0, Foundations (done 2026-10-19; CI green)
 

@@ -4,9 +4,9 @@ A profile describes one robot (or laptop): where audio comes from and goes to, w
 echo mode and pipeline to run, and which bridges to start. Unknown keys are errors, so a
 typo does not silently fall back to a default.
 
-M1 covers the ``portaudio`` and ``file`` backends and the ``software_ref``, ``gate`` and
-``off`` echo modes. TODO(M2): ``ros2_topic`` backends, ``hardware`` and ``loopback``
-modes, decoder plugins, migrations between schema versions.
+Backends: ``portaudio`` and ``file``. Echo modes: ``software_ref``, ``loopback``, ``gate``
+and ``off``. TODO(M2): ``ros2_topic`` backends, the ``hardware`` mode, decoder plugins and
+migrations between schema versions arrive in later M2 steps.
 """
 
 from __future__ import annotations
@@ -98,10 +98,12 @@ class PlaybackConfig(_Strict):
 
 
 class EchoConfig(_Strict):
-    mode: Literal["software_ref", "gate", "off"] = "software_ref"
+    mode: Literal["software_ref", "loopback", "gate", "off"] = "software_ref"
     engine: Literal["webrtc_aec3"] = "webrtc_aec3"
     mic: int | Literal["mean"] = 0
     lead_ms: int = Field(default=20, ge=0, le=200)
+    mic_delay_ms: int = Field(default=0, ge=0, le=50)
+    """``loopback``: delay the mic so the reference stays ahead of its echo."""
     drift_ppm: float = 0.0
 
     _mode_off = field_validator("mode", mode="before")(classmethod(lambda cls, v: _off(v)))

@@ -3,8 +3,8 @@
 The WebRTC APM does echo cancellation, noise suppression, high-pass filtering and gain
 control in one module, and its lags add up, so the builder merges every APM feature the
 pipeline asks for into one :class:`~ral.dsp.echo.ApmProcessor` when the echo mode is
-``software_ref``. In ``gate`` and ``off`` modes the APM features (if any) run as a second
-stage after the gate, with echo cancellation off.
+``software_ref`` or ``loopback``. In ``gate`` and ``off`` modes the APM features (if any)
+run as a second stage after the gate, with echo cancellation off.
 
 Pipeline stage names: ``aec`` (the echo controller; always present, the mode decides what
 it does), ``noise_suppression``, ``high_pass``, ``agc`` and ``vad``.
@@ -22,7 +22,7 @@ from ral.dsp.vad import EnergyVad
 
 __all__ = ["EchoMode", "build_capture_chain"]
 
-EchoMode = Literal["software_ref", "gate", "off"]
+EchoMode = Literal["software_ref", "loopback", "gate", "off"]
 _APM_STAGES = {
     "noise_suppression": "noise_suppression",
     "high_pass": "high_pass_filter",
@@ -37,15 +37,17 @@ def build_capture_chain(
     *,
     mic: MicChoice = 0,
     lead_ms: int = 20,
+    mic_delay_ms: int = 0,
     vad: Processor | None = None,
 ) -> list[Processor]:
     """The stages for one engine, in order.
 
     Args:
-        mode: Echo-control mode. ``hardware`` and ``loopback`` arrive in M2.
+        mode: Echo-control mode.
         pipeline: Stage names from the profile.
         mic: Mic channel for echo control.
         lead_ms: Reference lead for ``software_ref``.
+        mic_delay_ms: Mic delay for ``loopback``.
         vad: The VAD stage to use for ``vad`` (default: :class:`EnergyVad`).
 
     Raises:
@@ -54,19 +56,37 @@ def build_capture_chain(
     unknown = [s for s in pipeline if s not in _KNOWN]
     if unknown:
         raise FormatError(f"Unknown pipeline stages {unknown}; known: {sorted(_KNOWN)}.")
-    if mode not in ("software_ref", "gate", "off"):
+    if mode not in ("software_ref", "loopback", "gate", "off"):
         raise FormatError(
-            f"Echo mode {mode!r} is not available yet; use software_ref, gate or off "
-            f"(hardware and loopback come in M2)."
+            f"Echo mode {mode!r} is not available yet; use software_ref, loopback, gate or off."
         )
-    apm_flags = {flag: stage in pipeline for stage, flag in _APM_STAGES.items()}
+    ns, hpf, agc = (stage in pipeline for stage in _APM_STAGES)
     chain: list[Processor] = []
-    if mode == "software_ref":
-        chain.append(ApmProcessor(mic, echo_cancellation=True, lead_ms=lead_ms, **apm_flags))
+    if mode in ("software_ref", "loopback"):
+        chain.append(
+            ApmProcessor(
+                mic,
+                echo_cancellation=True,
+                noise_suppression=ns,
+                high_pass_filter=hpf,
+                auto_gain_control=agc,
+                lead_ms=lead_ms,
+                reference="channels" if mode == "loopback" else "buffer",
+                mic_delay_ms=mic_delay_ms,
+            )
+        )
     else:
         chain.append(DuplexGate(mic) if mode == "gate" else EchoOff(mic))
-        if any(apm_flags.values()):
-            chain.append(ApmProcessor(0, echo_cancellation=False, **apm_flags))
+        if ns or hpf or agc:
+            chain.append(
+                ApmProcessor(
+                    0,
+                    echo_cancellation=False,
+                    noise_suppression=ns,
+                    high_pass_filter=hpf,
+                    auto_gain_control=agc,
+                )
+            )
     if "vad" in pipeline:
         chain.append(vad if vad is not None else EnergyVad())
     return chain

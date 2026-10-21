@@ -70,6 +70,8 @@ def run_scene(
     lead_ms: int = 20,
     render_ahead_ms: int = 100,
     on_frame: Callable[[AudioFrame], None] | None = None,
+    loopback_ms: float | None = None,
+    capture: tuple[npt.NDArray[np.float64], Sequence[str]] | None = None,
 ) -> SceneRun:
     """Process ``scene`` and collect the clean stream and the events.
 
@@ -82,8 +84,22 @@ def run_scene(
         lead_ms: Reference lead.
         render_ahead_ms: How far ahead of its DAC time the far end is rendered.
         on_frame: Called with every clean frame.
+        loopback_ms: Add a ``reference`` channel to the capture: the far end as a loopback
+            on the mics' clock, ``loopback_ms`` late (for the ``loopback`` mode).
+        capture: Use these capture channels ``(samples, channels)`` and roles instead of
+            the scene's single mic (array devices, hardware-processed channels).
     """
     rate = scene.rate
+    if capture is not None:
+        signals, roles = np.asarray(capture[0], np.float64), list(capture[1])
+    elif loopback_ms is not None:
+        d = round(loopback_ms * rate / 1000)
+        loop = np.concatenate([np.zeros(d), scene.far])[: len(scene.mic)]
+        signals, roles = np.stack([scene.mic, loop], axis=1), ["mic", "reference"]
+    else:
+        signals, roles = scene.mic[:, None], ["mic"]
+    cmap = ChannelMap.from_names(roles)
+    cap_fmt = AudioFormat(rate, len(roles), "float32")
     fmt = AudioFormat(rate, 1, "float32")
     n = fmt.frame_samples
     frames = len(scene.mic) // n
@@ -97,8 +113,8 @@ def run_scene(
 
     ref = ReferenceBuffer(fmt, rate) if software_ref else None
     graph = CaptureGraph(
-        fmt,
-        ChannelMap.uniform(1),
+        cap_fmt,
+        cmap,
         stages,
         reference=ref,
         lead_ms=lead_ms,
@@ -107,18 +123,17 @@ def run_scene(
         engine_rate=rate,
     )
     far = scene.far.astype(np.float32)
-    mic = scene.mic.astype(np.float32)
+    mic = signals.astype(np.float32)
     ahead = render_ahead_ms // 10
     rendered = 0
     out: list[npt.NDArray[np.float32]] = []
     events: list[Event] = []
-    cmap = ChannelMap.uniform(1)
     for k in range(frames):
         while ref is not None and rendered < min(k + ahead, frames):
             ref.push(far[rendered * n : (rendered + 1) * n, None], T0 + rendered * FRAME_NS)
             rendered += 1
         frame = AudioFrame(
-            mic[k * n : (k + 1) * n, None].copy(), fmt, cmap, T0 + k * FRAME_NS, k, "mic"
+            mic[k * n : (k + 1) * n].copy(), cap_fmt, cmap, T0 + k * FRAME_NS, k, "mic"
         )
         for result in graph.process(frame):
             out.append(result.clean.data[:, 0])

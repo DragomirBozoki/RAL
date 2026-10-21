@@ -109,7 +109,12 @@ class ApmProcessor:
         noise_suppression: Run the APM's noise suppressor.
         high_pass_filter: Remove DC and rumble.
         auto_gain_control: Run the APM's gain controller.
-        lead_ms: Reference lead (and stream-delay hint), DESIGN section 5.
+        lead_ms: Reference lead (and stream-delay hint) for ``software_ref``, DESIGN 5.
+        reference: Where the reference comes from: ``"buffer"`` (``ctx.reference``, what RAL
+            rendered; ``software_ref``) or ``"channels"`` (the frame's own ``reference``
+            channels on the mics' clock; ``loopback``).
+        mic_delay_ms: ``loopback`` only: delay the mic by this much so the reference is
+            always ahead of its echo, and pass it as the stream delay.
 
     Raises:
         MissingDependencyError: If ``livekit`` is not installed.
@@ -124,7 +129,13 @@ class ApmProcessor:
         high_pass_filter: bool = False,
         auto_gain_control: bool = False,
         lead_ms: int = 20,
+        reference: Literal["buffer", "channels"] = "buffer",
+        mic_delay_ms: int = 0,
     ) -> None:
+        if reference not in ("buffer", "channels"):
+            raise FormatError(f"reference must be 'buffer' or 'channels', got {reference!r}.")
+        if mic_delay_ms < 0:
+            raise FormatError(f"mic_delay_ms must not be negative, got {mic_delay_ms}.")
         try:
             from livekit import rtc
         except ImportError:
@@ -132,14 +143,19 @@ class ApmProcessor:
         self._rtc = rtc
         self.mic = mic
         self.lead_ms = lead_ms
+        self.reference = reference
+        self.mic_delay_ms = mic_delay_ms if reference == "channels" else 0
         self._flags = {
             "echo_cancellation": echo_cancellation,
             "noise_suppression": noise_suppression,
             "high_pass_filter": high_pass_filter,
             "auto_gain_control": auto_gain_control,
         }
-        self.lag_ms = sum(ms for name, ms in APM_LAG_MS.items() if self._flags[name])
-        """How far the output trails the input; clean frames are stamped earlier by this."""
+        self.lag_ms = (
+            sum(ms for name, ms in APM_LAG_MS.items() if self._flags[name]) + self.mic_delay_ms
+        )
+        """How far the output trails the input (APM lag plus any mic delay); clean frames
+        are stamped earlier by this."""
         self.reference_frames = 0
         """Reference frames fed to the reverse stream."""
         self.silence_frames = 0
@@ -149,6 +165,7 @@ class ApmProcessor:
         self._apm: Any = None
         self._ref_until: int | None = None
         self._silence = np.zeros((0, 1), np.float32)
+        self._delay_line: npt.NDArray[np.float32] = np.zeros((0, 1), np.float32)
         self.reset()
 
     @property
@@ -159,6 +176,7 @@ class ApmProcessor:
         """Start a fresh APM (its adaptive filters and estimators restart)."""
         self._apm = self._rtc.AudioProcessingModule(**self._flags)
         self._ref_until = None
+        self._delay_line = np.zeros((0, 1), np.float32)
 
     def process(self, frame: AudioFrame, ctx: FrameContext) -> AudioFrame:
         rate, n = frame.fmt.sample_rate, frame.fmt.frame_samples
@@ -166,11 +184,15 @@ class ApmProcessor:
             raise FormatError("The WebRTC APM needs exactly 10 ms frames.")
         if self._silence.shape[0] != n:
             self._silence = np.zeros((n, 1), np.float32)
-        if self.echo_cancellation:
-            self._feed_reverse(frame, ctx, rate, n)
-            self._apm.set_stream_delay_ms(self.lead_ms)
         data = select_mic(frame, self.mic)
         ctx.info["mic_db"] = rms_db(data)
+        if self.echo_cancellation and self.reference == "channels":
+            self._feed_loopback(frame, ctx, rate, n)
+            self._apm.set_stream_delay_ms(self.mic_delay_ms)
+            data = self._delay(data, rate)
+        elif self.echo_cancellation:
+            self._feed_reverse(frame, ctx, rate, n)
+            self._apm.set_stream_delay_ms(self.lead_ms)
         rtc_frame = self._to_rtc(data, rate, n)
         self._apm.process_stream(rtc_frame)
         pcm = np.frombuffer(rtc_frame.data, dtype=np.int16).reshape(n, 1)
@@ -178,6 +200,33 @@ class ApmProcessor:
         ctx.info["out_db"] = rms_db(out)
         # The output carries audio captured lag_ms earlier (spikes/apm_lag.py).
         return _mono_frame(frame, out, frame.t_ns - self.lag_ms * 1_000_000)
+
+    def _feed_loopback(self, frame: AudioFrame, ctx: FrameContext, rate: int, n: int) -> None:
+        # loopback (DESIGN 5): the reference channels share the mics' frame and clock, so
+        # the reverse stream gets this frame's reference first, then the mic is processed.
+        refs = frame.channel_map.indices(ChannelRole.REFERENCE)
+        if not refs:
+            raise FormatError(
+                "Echo mode loopback needs reference channels in the capture stream; mark them "
+                "as `reference` in capture.channels, or use software_ref."
+            )
+        ref = frame.data[:, list(refs)].mean(axis=1, keepdims=True, dtype=np.float32)
+        self._apm.process_reverse_stream(self._to_rtc(ref, rate, n))
+        self.reference_frames += 1
+        ctx.info["ref_db"] = rms_db(ref)
+
+    def _delay(self, data: npt.NDArray[np.float32], rate: int) -> npt.NDArray[np.float32]:
+        # A short delay line on the mic: the echo reaches the canceller mic_delay_ms after
+        # its reference, which keeps timing errors on the early side (DESIGN 5).
+        d = self.mic_delay_ms * rate // 1000
+        if d == 0:
+            return data
+        if self._delay_line.shape[0] != d:
+            self._delay_line = np.zeros((d, 1), np.float32)
+        joined = np.concatenate([self._delay_line, data])
+        self._delay_line = joined[-d:]
+        out: npt.NDArray[np.float32] = joined[: data.shape[0]]
+        return out
 
     def _feed_reverse(self, frame: AudioFrame, ctx: FrameContext, rate: int, n: int) -> None:
         # Keep the reverse stream continuous in DAC time up to t_mic + lead. AEC3 behaves

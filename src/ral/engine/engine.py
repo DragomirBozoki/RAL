@@ -166,7 +166,12 @@ class Engine:
         self.source = source
         playback = self.playback
         stages: list[Processor] = build_capture_chain(
-            p.echo.mode, p.pipeline, mic=p.echo.mic, lead_ms=p.echo.lead_ms, vad=self._make_vad()
+            p.echo.mode,
+            p.pipeline,
+            mic=p.echo.mic,
+            lead_ms=p.echo.lead_ms,
+            mic_delay_ms=p.echo.mic_delay_ms,
+            vad=self._make_vad(),
         )
         stages.append(
             BargeInDetector(
