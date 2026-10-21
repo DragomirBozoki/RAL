@@ -15,8 +15,8 @@ the M1 proposal so the room simulation can cover every echo mode.
 | 2 | `hardware` echo mode and device database | done |
 | 3 | Simulated rooms in CI for every echo mode | done |
 | 4 | Replay of recordings and `ral bench` | done |
-| 5 | `ral probe` | next |
-| 6 | Profile migrations and registry | |
+| 5 | `ral probe` | done (hardware run pending) |
+| 6 | Profile migrations and registry | next |
 | 7 | ROS 2 backend and `ral_ros` | |
 | 8 | Pipecat transport (`integrations/pipecat`) | |
 
@@ -48,9 +48,20 @@ the M1 proposal so the room simulation can cover every echo mode.
   (`bench_rows`, `write_scene_recording`) and `ral bench` (`--echo`, `--config`, `--vad`,
   `--demo`, `--json`). Recordings now keep each channel's sample rate when read back.
   Demo: off 31 starts/min and 0.5 dB, `software_ref` 0 starts/min and 52.6 dB.
+- **Step 5.** `ral.probe` (`signals`: exponential sweep and inverse filter; `analyze`: noise
+  floor, roles, delay, gain, drift, mode suggestion; `io`: `EngineProbeIO` through the
+  playback service and `SimulatedProbeIO`; `run`: profile YAML with a measurement header and
+  an HTML report) and `ral probe` (`--input`, `--output`, `--level`, `--drift-s`, `--quiet`,
+  `--yes`, `--simulate`). Simulated arrays are mapped correctly (mic, reference, processed,
+  dead), delays within 0.2 ms, drift within 30 %. A `hardware` test runs it on real devices.
+- Found in CI after step 3: `test_higher_priority_preempts_with_fade` failed on Windows (an
+  underrun gap fooled the fade search; fixed in 21f90db).
 
 ### M2 decisions
 
+- 2026-10-21 (step 5): the probe plays through the engine's playback service, like all
+  RAL audio, so its delay is measured from the DAC time RAL itself estimates, which is the
+  delay `software_ref` has to cover.
 - 2026-10-21 (step 3): the simulated array's residual echo is -45 dB, an assumption until
   `ral probe` and `ral bench` measure a real one; at -35 dB the energy VAD self-triggers.
 - 2026-10-21 (step 2): the device database lives in `src/ral/devicedb/` (not top-level

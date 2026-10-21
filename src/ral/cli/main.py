@@ -9,6 +9,7 @@ from ral import __version__
 from ral.cli import models
 from ral.cli.bench import bench
 from ral.cli.doctor import doctor
+from ral.cli.probe import probe
 from ral.cli.run import run
 
 app = typer.Typer(
@@ -42,4 +43,5 @@ def main(
 app.command()(doctor)
 app.command()(run)
 app.command()(bench)
+app.command()(probe)
 app.add_typer(models.app, name="models")

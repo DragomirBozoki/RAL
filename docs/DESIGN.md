@@ -405,6 +405,8 @@ On Windows, PortAudio lists the same physical device under several host APIs (MM
 
 The probe warns before playing, caps volume, and has a `--quiet` mode that skips sound when people are nearby.
 
+Implementation (`ral.probe`): exponential sweeps (2 s, 100 Hz to 0.45 x rate, -20 dBFS, capped at -6) deconvolved with Farina's inverse filter. Sweeps are played through the engine's playback service, so they also reach the reference buffer, and `PlaybackStarted` gives their DAC time: impulse-response index 0 is the DAC time, so the peak is the playback-to-capture delay. Classification: dead below -110 dBFS in silence; `reference` when the response is strong, under 5 ms and over 20 dB more direct than reverberant; `processed` when the channel is alive but more than 20 dB below the loudest mic (the device cancelled the sweep); `mic` otherwise if it responds; `unused` if not. Drift is the slope of the first mic's delay over repeated sweeps (`--drift-s`). Echo-mode suggestion: `hardware` if a processed channel exists or the device database says the device cancels echo and playback is on it, else `loopback` with a reference channel, else `software_ref` with mics, else `gate`. Output: a profile whose header records the measurements, and an HTML report with inline SVG impulse responses. TODO(M3): spectrograms in the report. `ral probe --simulate` runs the same analysis on a simulated robot.
+
 ### Example profile
 
 ```yaml
