@@ -455,7 +455,7 @@ RAL integrates by standing in for the microphone and speaker that each stack alr
 |---|---|---|
 | LiveKit Agents | `LiveKitBridge` joins the room as the robot participant (URL plus a token, or API key and secret to mint one), publishes the clean mic track, subscribes to the agent's audio and plays it through the playback service; events go out as data messages | Nothing in the agent; one `bridges.livekit` block in the profile |
 | Pipecat | `PipecatTransport` implements Pipecat's `BaseTransport` (`input()` and `output()` processors) in-process, or connects over WebSocket | Swap the local audio transport for the RAL transport |
-| ROS 2 | `ral_ros` node publishes clean audio as `audio_common_msgs/AudioDataStamped` plus `AudioInfo` on a transient-local topic (the data message carries raw bytes without format), plus VAD and event topics; offers `Say` and `PlayAudio` actions and `stop` and `duck` services | `ros2 launch ral_ros robot.launch.py profile:=my-robot.yaml` |
+| ROS 2 | `ral_ros` node publishes clean audio as `audio_common_msgs/AudioDataStamped` plus `AudioInfo` on a transient-local topic (the data message carries raw bytes without format), plus an event topic; v0.2 takes audio to speak on a `play` topic and control (`interrupt`, `stop`, `duck`, `end`) as JSON on a `control` topic, and the `Say` and `PlayAudio` actions and `stop` and `duck` services follow with an interface package (M3) | `ros2 launch ral_ros robot.launch.py profile:=my-robot.yaml` |
 | Speech-to-speech models | `RealtimeModel` port streams clean audio to the provider and plays its answer through the playback service | API key and instructions in the profile |
 | Standalone STT and TTS | `SpeechToText` and `TextToSpeech` ports with one local and one cloud reference adapter each | Choose models in the profile, or write a small adapter |
 | Any language (C++, Rust, C#, JS) | WebSocket with binary PCM frames and JSON control; gRPC streaming for typed clients | A small client |
@@ -476,6 +476,14 @@ RAL integrates by standing in for the microphone and speaker that each stack alr
 - Pipecat's `TransportParams` carries audio input and output settings and generic input and output filters, so RAL can also ship as an input filter for teams that keep their own transport.
 - `rclpy` is not on PyPI; it comes from a sourced ROS 2 installation. ROS 2 code imports it lazily, and everything else works without it.
 - Robots whose makers expose no audio interface to third parties are out of scope until they do.
+
+### ROS 2 implementation notes (M2)
+
+- `ral.ros2.Ros2Runtime` owns its own rclpy `Context`, node and `SingleThreadedExecutor` thread; subscription callbacks run there and only decode and copy into a Framer. API checked against the rclpy `humble` sources (docs.ros.org blocks automated readers).
+- `ros2_topic` capture (`Ros2TopicSource`) maps message stamps (ROS time) onto the RAL clock through the lower envelope of `now_ns() - ros_now`; unstamped messages are timed at arrival minus their duration. The profile must give `capture.format`, because audio messages carry none. Decoders: `audio_common` (stamped) and `audio_common_unstamped` built in; vendor types through the `ral.decoders` entry point.
+- `ros2_topic` playback (`Ros2TopicSink`) publishes one 10 ms `AudioDataStamped` per tick on absolute deadlines, silence included, plus `AudioInfo` once on `<topic>_info` (transient local); the DAC time is publish time plus `playback.latency_ms`.
+- `uint8[]` fields are `array.array('B')` in rclpy (rosidl_generator_py); RAL assigns one directly, which skips per-element checks.
+- `Ros2Bridge` (namespace `/ral`): `clean` + `clean_info`, `events` (`std_msgs/String` JSON), `play` (each burst one playback item, ending after 300 ms without audio) and `control`.
 
 ### Robot targets, in order
 

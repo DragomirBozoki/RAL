@@ -4,10 +4,9 @@ A profile describes one robot (or laptop): where audio comes from and goes to, w
 echo mode and pipeline to run, and which bridges to start. Unknown keys are errors, so a
 typo does not silently fall back to a default.
 
-Backends: ``portaudio`` and ``file``. Echo modes: ``hardware``, ``software_ref``,
-``loopback``, ``gate`` and ``off``. Older schema versions are upgraded by
-:mod:`ral.profiles.migrations` before validation. TODO(M2): ``ros2_topic`` backends and
-decoder plugins arrive in the ROS 2 step.
+Backends: ``portaudio``, ``file`` and ``ros2_topic``. Echo modes: ``hardware``,
+``software_ref``, ``loopback``, ``gate`` and ``off``. Older schema versions are upgraded by
+:mod:`ral.profiles.migrations` before validation.
 """
 
 from __future__ import annotations
@@ -54,7 +53,7 @@ class FormatConfig(_Strict):
 
 
 class CaptureConfig(_Strict):
-    backend: Literal["portaudio", "file"] = "portaudio"
+    backend: Literal["portaudio", "file", "ros2_topic"] = "portaudio"
     device: str | None = None
     """Device name (substring) or id; the default input device if omitted."""
     path: str | None = None
@@ -65,6 +64,12 @@ class CaptureConfig(_Strict):
     """Native format to open; the device's default rate and all channels if omitted."""
     channels: list[str] | None = None
     """Role of each channel; all ``mic`` if omitted."""
+    topic: str | None = None
+    """``ros2_topic``: the audio topic to subscribe to."""
+    decoder: str = "audio_common"
+    """``ros2_topic``: message decoder: ``audio_common``, ``audio_common_unstamped``, a plugin."""
+    reliability: Literal["reliable", "best_effort"] = "reliable"
+    """``ros2_topic``: QoS reliability to request."""
 
     @field_validator("channels")
     @classmethod
@@ -79,22 +84,31 @@ class CaptureConfig(_Strict):
     def _file_needs_path(self) -> CaptureConfig:
         if self.backend == "file" and not self.path:
             raise ValueError("the file backend needs `path`")
+        if self.backend == "ros2_topic" and not (self.topic and self.format):
+            raise ValueError(
+                "the ros2_topic backend needs `topic` and `format` (audio messages carry no format)"
+            )
         return self
 
 
 class PlaybackConfig(_Strict):
-    backend: Literal["portaudio", "file"] = "portaudio"
+    backend: Literal["portaudio", "file", "ros2_topic"] = "portaudio"
     device: str | None = None
     path: str | None = None
     realtime: bool = True
     format: FormatConfig | None = None
     latency_ms: int | None = None
-    """Extra output latency to assume on top of what the backend reports."""
+    """Publish-to-DAC estimate for ``ros2_topic`` (from ``ral probe``)."""
+    topic: str | None = None
+    """``ros2_topic``: the topic to publish playback to."""
+    reliability: Literal["reliable", "best_effort"] = "reliable"
 
     @model_validator(mode="after")
     def _file_needs_path(self) -> PlaybackConfig:
         if self.backend == "file" and not self.path:
             raise ValueError("the file backend needs `path`")
+        if self.backend == "ros2_topic" and not self.topic:
+            raise ValueError("the ros2_topic backend needs `topic`")
         return self
 
 

@@ -1,0 +1,16 @@
+# Capture from and play to ROS 2 topics, as on a robot whose HAL publishes audio.
+# Try it with the fake HAL: python examples/ros2/fake_hal.py tests/data/speech_16k.wav
+ral: 1
+robot: {model: ros2-topic-example}
+capture:
+  backend: ros2_topic
+  topic: /hal/audio/capture
+  format: {rate: 16000, channels: 1, dtype: int16}
+playback:
+  backend: ros2_topic
+  topic: /hal/audio/playback
+  latency_ms: 0          # publish-to-DAC estimate; ral probe measures it on a real robot
+echo: {mode: off}        # the fake HAL plays nothing back
+pipeline: [aec, vad]
+vad: {engine: energy}
+barge_in: {policy: off}

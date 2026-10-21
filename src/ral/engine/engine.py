@@ -123,6 +123,7 @@ class Engine:
         self._loop: asyncio.AbstractEventLoop | None = None
         self._remove_listener: Any = None
         self._remove_latency: Any = None
+        self._ros2: Any = None
         self.latency = LatencyTracker()
         """Per-turn latency; replaced with a publishing tracker on start."""
         self.capture_done = asyncio.Event()
@@ -235,6 +236,9 @@ class Engine:
             self._remove_latency = None
         for sub in list(self._subs):
             sub.close()
+        if self._ros2 is not None:
+            self._ros2.close()
+            self._ros2 = None
 
     async def __aenter__(self) -> Engine:
         await self.start()
@@ -260,7 +264,27 @@ class Engine:
 
         return PortAudioBackend(self._sd)
 
+    def _ros2_runtime(self) -> Any:
+        if self._ros2 is None:
+            from ral.ros2 import Ros2Runtime
+
+            self._ros2 = Ros2Runtime("ral_engine")
+        return self._ros2
+
     def _open_source(self, cfg: CaptureConfig) -> AudioSource:
+        if cfg.backend == "ros2_topic":
+            from ral.devices.ros2_topic import Ros2TopicBackend
+
+            assert cfg.topic is not None
+            assert cfg.format is not None
+            ros = Ros2TopicBackend(
+                self._ros2_runtime(), decoder=cfg.decoder, reliability=cfg.reliability
+            )
+            fmt = AudioFormat(cfg.format.rate, cfg.format.channels, "int16")
+            ros_source: AudioSource = ros.open_source(
+                ros.device(cfg.topic, "input"), fmt, self._channel_map(cfg, fmt.channels)
+            )
+            return ros_source
         if cfg.backend == "file":
             from ral.devices.file import FileBackend
 
@@ -282,6 +306,21 @@ class Engine:
         return source
 
     def _open_sink(self, cfg: PlaybackConfig) -> AudioSink:
+        if cfg.backend == "ros2_topic":
+            from ral.devices.ros2_topic import Ros2TopicBackend
+
+            assert cfg.topic is not None
+            ros = Ros2TopicBackend(
+                self._ros2_runtime(), reliability=cfg.reliability, latency_ms=cfg.latency_ms or 0
+            )
+            f = cfg.format
+            fmt = (
+                AudioFormat(f.rate, f.channels, "int16")
+                if f
+                else AudioFormat(self.engine_fmt.sample_rate, 1, "int16")
+            )
+            ros_sink: AudioSink = ros.open_sink(ros.device(cfg.topic, "output"), fmt)
+            return ros_sink
         if cfg.backend == "file":
             from ral.devices.file import FileBackend
 

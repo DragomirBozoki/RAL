@@ -53,7 +53,17 @@ def _livekit(cfg: Mapping[str, Any]) -> Bridge:
     return LiveKitBridge.from_config(cfg)
 
 
-_BUILTIN: dict[str, BridgeFactory] = {"websocket": _websocket, "livekit": _livekit}
+def _ros2(cfg: Mapping[str, Any]) -> Bridge:
+    from ral.bridges.ros2 import Ros2Bridge
+
+    return Ros2Bridge.from_config(cfg)
+
+
+_BUILTIN: dict[str, BridgeFactory] = {
+    "websocket": _websocket,
+    "livekit": _livekit,
+    "ros2": _ros2,
+}
 
 
 def make_bridge(name: str, cfg: Mapping[str, Any]) -> Bridge:

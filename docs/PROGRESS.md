@@ -17,8 +17,8 @@ the M1 proposal so the room simulation can cover every echo mode.
 | 4 | Replay of recordings and `ral bench` | done |
 | 5 | `ral probe` | done (hardware run pending) |
 | 6 | Profile migrations and registry | done |
-| 7 | ROS 2 backend and `ral_ros` | next |
-| 8 | Pipecat transport (`integrations/pipecat`) | |
+| 7 | ROS 2 backend and `ral_ros` | done (needs a ROS 2 machine) |
+| 8 | Pipecat transport (`integrations/pipecat`) | next |
 
 ### M2 done
 
@@ -61,6 +61,31 @@ the M1 proposal so the room simulation can cover every echo mode.
   `ral.profiles.registry` (path, `$RAL_PROFILES_PATH`, user folder, built-ins; user files
   override built-ins for roll-out and roll-back), `ral profile list|show|validate|migrate`,
   and the built-in `respeaker-usb-v2` profile from the device database (`hardware` mode).
+- **Step 7.** `ral.ros2` (runtime with its own context and executor thread, ROS-time
+  mapping, QoS helper, decoders with the `ral.decoders` entry point),
+  `ral.devices.ros2_topic` (topic source and sink), `ros2_topic` in profiles and the
+  engine, `ral.bridges.ros2.Ros2Bridge`, and the `ral_ros` colcon package (node, launch
+  file). Tested against a fake rclpy whose executor delivers on its own thread
+  (`tests/fakes/rclpy_fake.py`); not yet run on ROS 2. Actions and services: M3.
+
+#### Maintainer tasks on Ubuntu with ROS 2 (Humble or Jazzy)
+
+```bash
+source /opt/ros/humble/setup.bash
+sudo apt install ros-humble-audio-common-msgs
+uv sync --all-extras --python /usr/bin/python3   # the Python ROS 2 uses
+uv run ral doctor                                # ROS 2 section: RMW, domain, audio topics
+uv run pytest tests/ros2 tests/devices/doctor    # fakes, should pass as on Windows
+# Real topics: a fake HAL publishes a WAV, RAL captures it
+python3 examples/ros2/fake_hal.py tests/data/speech_16k.wav &
+uv run ral run --profile examples/ros2/topic_loop.yaml --json --duration 15
+```
+
+Expected: `ral doctor` lists `/hal/audio/capture` with type
+`audio_common_msgs/msg/AudioDataStamped` and its QoS; `ral run` prints `SpeechStarted` and
+`SpeechEnded` for the speech in the WAV. Then build `ral_ros` with colcon and run
+`ros2 launch ral_ros robot.launch.py profile:=examples/ros2/topic_loop.yaml`; in another
+shell `ros2 topic echo /ral/events` should show the same events.
 
 ### M2 decisions
 

@@ -39,12 +39,16 @@ class MissingDependencyError(RalError, ImportError):
         package: The importable module that is missing, for example ``"sounddevice"``.
         extra: The ``ral-audio`` extra that installs it, for example ``"audio"``.
         purpose: What needs it, for example ``"the PortAudio backend"``.
+        install_hint: How to install it, when it is not a pip extra (``rclpy`` comes from a
+            sourced ROS 2 installation).
     """
 
-    def __init__(self, package: str, extra: str, purpose: str) -> None:
+    def __init__(
+        self, package: str, extra: str, purpose: str, *, install_hint: str | None = None
+    ) -> None:
         self.package = package
         self.extra = extra
-        self.install_hint = f'pip install "ral-audio[{extra}]"'
+        self.install_hint = install_hint or f'pip install "ral-audio[{extra}]"'
         super().__init__(
             f"{purpose} needs the optional package '{package}', which is not installed. "
             f"Install it with: {self.install_hint}"
