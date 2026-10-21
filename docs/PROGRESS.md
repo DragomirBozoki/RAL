@@ -12,8 +12,8 @@ the M1 proposal so the room simulation can cover every echo mode.
 | Step | What | Status |
 |---|---|---|
 | 1 | `loopback` echo mode | done |
-| 2 | `hardware` echo mode and device database | next |
-| 3 | Simulated rooms in CI for every echo mode | |
+| 2 | `hardware` echo mode and device database | done |
+| 3 | Simulated rooms in CI for every echo mode | next |
 | 4 | Replay of recordings and `ral bench` | |
 | 5 | `ral probe` | |
 | 6 | Profile migrations and registry | |
@@ -28,9 +28,19 @@ the M1 proposal so the room simulation can cover every echo mode.
   to the lag. Profile `echo.mode: loopback`, `echo.mic_delay_ms`; `run_scene` takes a capture
   matrix with roles or `loopback_ms`. Synthetic ERLE 44 dB at 5, 20 and 120 ms echo delay,
   with or without a 5 ms mic delay.
+- **Step 2.** `hardware` mode (`HardwareAecPassthrough`: processed channel out, mic and
+  reference levels for barge-in; engine refuses it without a `processed` channel and warns
+  when playback is on another device) and the device database `ral.devicedb`
+  (`devices.yaml` in the package, pydantic-validated, matching by USB id, name and channel
+  count; `ral doctor` reports known devices with echo mode and layout). Entries: ReSpeaker
+  USB Mic Array v2.0 (XVF3000) 6- and 1-channel firmware, XMOS XVF3800; only documented
+  facts, `validated_by: docs`.
 
 ### M2 decisions
 
+- 2026-10-21 (step 2): the device database lives in `src/ral/devicedb/` (not top-level
+  `devicedb/`) so it ships with the package. The XVF3800's USB output channel layout and USB
+  ids are not in the public datasheet, so the entry leaves them out; `ral probe` maps them.
 - 2026-10-21 (step 1): in `loopback` the reference is the mean of the `reference` channels;
   stereo loopbacks of a mono speaker feed are the common case. The mic delay defaults to 0
   because the loopback already leads its acoustic echo by the speaker-to-mic path.

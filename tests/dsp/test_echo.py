@@ -193,3 +193,53 @@ def test_loopback_without_reference_channels_explains_itself(apm_module: object)
     proc = ApmProcessor(reference="channels")
     with pytest.raises(FormatError, match="reference channels"):
         proc.process(mic_frames(np.zeros(160, np.float32))[0], FrameContext("s"))
+
+
+# hardware (M2): the device cancels echo itself.
+
+
+def test_hardware_passthrough_takes_the_processed_channel() -> None:
+    from ral.dsp.echo import HardwareAecPassthrough
+
+    fmt = AudioFormat(16000, 3, "float32")
+    cmap = ChannelMap.from_names(["processed", "mic", "reference"])
+    data = np.stack([np.full(160, 0.01), np.full(160, 0.5), np.full(160, 0.3)], axis=1).astype(
+        np.float32
+    )
+    ctx = FrameContext("s")
+    out = HardwareAecPassthrough().process(AudioFrame(data, fmt, cmap, T0, 0, "arr"), ctx)
+    np.testing.assert_allclose(out.data[:, 0], 0.01)
+    assert out.t_ns == T0
+    assert ctx.info["mic_db"] == pytest.approx(20 * np.log10(0.5), abs=0.01)
+    assert ctx.info["ref_db"] == pytest.approx(20 * np.log10(0.3), abs=0.01)
+    assert ctx.info["out_db"] == pytest.approx(-40.0, abs=0.01)
+
+
+def test_hardware_passthrough_needs_a_processed_channel() -> None:
+    from ral.dsp.echo import HardwareAecPassthrough
+
+    with pytest.raises(FormatError, match="processed"):
+        HardwareAecPassthrough().process(
+            mic_frames(np.zeros(160, np.float32))[0], FrameContext("s")
+        )
+
+
+def test_hardware_mode_lets_barge_in_learn_the_residual() -> None:
+    # A device that leaves -40 dB of residual echo: robot-only speech must not interrupt,
+    # a user talking over it must.
+    from ral.bench.offline import run_scene
+    from ral.dsp.bargein import BargeInDetector
+    from ral.dsp.echo import HardwareAecPassthrough
+    from ral.dsp.vad import EnergyVad
+
+    scene = echo_scene(seconds=20, delay_ms=20, near_spans=[(12.0, 15.0)], seed=5)
+    processed = scene.echo * 10 ** (-40 / 20) + scene.near + scene.noise
+    capture = (np.stack([processed, scene.mic], axis=1), ["processed", "mic"])
+    run = run_scene(
+        scene,
+        [HardwareAecPassthrough(), EnergyVad(), BargeInDetector("vad+dtd")],
+        software_ref=True,
+        capture=capture,
+    )
+    assert len(run.barge_ins) == 1
+    assert 11.9 < run.barge_ins[0] < 12.8

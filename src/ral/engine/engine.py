@@ -31,7 +31,7 @@ from ral.core.errors import ConfigError, RalError
 from ral.core.events import BargeIn, Event, RecordingStarted, RecordingStopped
 from ral.core.processing import Processor
 from ral.core.protocols import AudioSink, AudioSource
-from ral.core.types import AudioFormat, AudioFrame, ChannelMap
+from ral.core.types import AudioFormat, AudioFrame, ChannelMap, ChannelRole
 from ral.dsp.bargein import BargeInDetector
 from ral.dsp.pipeline import build_capture_chain
 from ral.dsp.vad import EnergyVad
@@ -164,6 +164,8 @@ class Engine:
 
         source = self._open_source(p.capture)
         self.source = source
+        if p.echo.mode == "hardware":
+            self._check_hardware(source)
         playback = self.playback
         stages: list[Processor] = build_capture_chain(
             p.echo.mode,
@@ -313,6 +315,24 @@ class Engine:
             fmt = pa.native_format(dev, "output", "float32", min(2, dev.max_output_channels))
         sink: AudioSink = pa.open_sink(dev, fmt)
         return sink
+
+    def _check_hardware(self, source: AudioSource) -> None:
+        # hardware mode (DESIGN 5): the device cancels echo against what it plays itself.
+        if not source.channel_map.indices(ChannelRole.PROCESSED):
+            raise ConfigError(
+                "Echo mode hardware needs the device's echo-cancelled channel marked as "
+                "`processed` in capture.channels. `ral doctor` shows the layout of known devices."
+            )
+        cap, play = self.profile.capture, self.profile.playback
+        if cap.backend != play.backend or (cap.device or "") != (play.device or ""):
+            log.warning(
+                "Echo mode hardware: playback (%s %s) is not the capture device (%s %s); the "
+                "device only cancels what it plays itself.",
+                play.backend,
+                play.device or "default",
+                cap.backend,
+                cap.device or "default",
+            )
 
     @staticmethod
     def _channel_map(cfg: CaptureConfig, channels: int) -> ChannelMap:

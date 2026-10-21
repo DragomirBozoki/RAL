@@ -73,6 +73,34 @@ class PortAudioScanner:
         self._check_default(report, backend, "input")
         self._check_default(report, backend, "output")
         self._note_duplicates(report, groups)
+        self._known_devices(report, devices)
+
+    def _known_devices(self, report: DoctorReport, devices: list[DeviceInfo]) -> None:
+        # Device database (DESIGN 6): name the echo mode and channel layout of known arrays.
+        from ral.devicedb import find_entry
+
+        seen: set[str] = set()
+        for dev in devices:
+            if dev.max_input_channels == 0:
+                continue
+            entry = find_entry(dev)
+            if entry is None or entry.id in seen:
+                continue
+            seen.add(entry.id)
+            layout = (
+                f"channels: [{', '.join(entry.channels)}]"
+                if entry.channels
+                else "channel layout unknown, run `ral probe`"
+            )
+            hint = f"echo.mode: {entry.echo_mode}; {layout}"
+            if entry.hardware_aec:
+                hint += "; play through this device so its echo canceller sees the reference"
+            report.add(
+                "devices",
+                Level.OK,
+                f"Known device: {entry.name} ({dev.name}, {dev.id}). {entry.notes}".strip(),
+                hint,
+            )
 
     def _check_default(
         self, report: DoctorReport, backend: PortAudioBackend, direction: Direction

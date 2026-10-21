@@ -118,3 +118,18 @@ def test_bad_channel_list_is_a_config_error(tmp_path: Path) -> None:
 
     with pytest.raises(ConfigError, match="one role per channel"):
         asyncio.run(go())
+
+
+def test_hardware_mode_needs_a_processed_channel(tmp_path: Path) -> None:
+    from ral.core import ConfigError
+
+    text = file_profile(tmp_path, realtime=False).replace(
+        "echo: {mode: off}", "echo: {mode: hardware}"
+    )
+    engine = Engine(parse_profile(text))
+
+    async def go() -> None:
+        await engine.start()
+
+    with pytest.raises(ConfigError, match="processed"):
+        asyncio.run(go())

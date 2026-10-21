@@ -1,0 +1,57 @@
+# RAL device database (schema version 1). DESIGN section 6, "Device database".
+#
+# Every fact here must come from a public source listed under `sources`. Leave a field out
+# (or null) when no public source states it; `ral probe` measures what is missing.
+# `validated_by: docs` means "from documentation, not tested on hardware by RAL".
+version: 1
+devices:
+  - id: seeed-respeaker-usb-v2-6ch
+    name: ReSpeaker USB Mic Array v2.0 (XMOS XVF3000), 6-channel firmware
+    match:
+      usb: ["2886:0018"]
+      name: ["ReSpeaker 4 Mic Array"]
+      input_channels: 6
+    hardware_aec: true
+    rates: [16000]
+    channels: [processed, mic, mic, mic, mic, reference]
+    echo_mode: hardware
+    notes: >-
+      Channel 0 is processed audio for ASR, 1-4 raw mics, 5 the merged playback. Play
+      through this device so its echo canceller sees the reference.
+    sources:
+      - https://wiki.seeedstudio.com/ReSpeaker_Mic_Array_v2.0/
+    validated_by: docs
+
+  - id: seeed-respeaker-usb-v2-1ch
+    name: ReSpeaker USB Mic Array v2.0 (XMOS XVF3000), 1-channel firmware
+    match:
+      usb: ["2886:0018"]
+      name: ["ReSpeaker 4 Mic Array"]
+      input_channels: 1
+    hardware_aec: true
+    rates: [16000]
+    channels: [processed]
+    echo_mode: hardware
+    notes: Processed audio for ASR only. Play through this device.
+    sources:
+      - https://wiki.seeedstudio.com/ReSpeaker_Mic_Array_v2.0/
+    validated_by: docs
+
+  - id: xmos-xvf3800
+    name: XMOS XVF3800 voice processor (USB)
+    match:
+      name: ["XVF3800"]
+    hardware_aec: true
+    rates: [16000, 48000]
+    reference_channel: left
+    aec_tail_ms: 192
+    microphones: 4
+    echo_mode: hardware
+    notes: >-
+      The far-end reference goes on the left channel of the device's USB or I2S input; the
+      right channel is ignored. The USB output channel layout depends on the firmware and
+      is not in the public datasheet: run `ral probe` to map it.
+    sources:
+      - https://xmos.com/documentation/XM-014888-PC/html/modules/fwk_xvf/doc/datasheet/03_audio_pipeline.html
+      - https://www.xmos.com/documentation/XM-014888-PC/html/modules/fwk_xvf/doc/datasheet/05_device_interfaces.html
+    validated_by: docs

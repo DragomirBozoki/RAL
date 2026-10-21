@@ -2,7 +2,7 @@ import sys
 
 import pytest
 
-from fakes.sounddevice import FakeSd
+from fakes.sounddevice import FakeSd, raw_device
 from ral.core import DeviceError, MissingDependencyError
 from ral.devices.doctor import DoctorReport, Level
 from ral.devices.doctor.portaudio_scan import PortAudioScanner
@@ -85,3 +85,15 @@ def test_missing_sounddevice_and_missing_library() -> None:
     assert second.level is Level.ERROR
     assert second.hint is not None
     assert "libportaudio2" in second.hint
+
+
+def test_known_array_is_named_with_its_echo_mode_and_layout() -> None:
+    sd = FakeSd()
+    sd.devices.append(raw_device(5, 1, "ReSpeaker 4 Mic Array (UAC1.0)", 6, 2, 16000.0))
+    report = scan(sd)
+    known = [f for f in report.findings if f.area == "devices"]
+    assert len(known) == 1
+    assert "ReSpeaker USB Mic Array v2.0" in known[0].message
+    assert known[0].hint is not None
+    assert "echo.mode: hardware" in known[0].hint
+    assert "processed, mic, mic, mic, mic, reference" in known[0].hint

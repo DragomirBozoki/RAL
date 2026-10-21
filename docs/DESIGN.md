@@ -320,12 +320,15 @@ Echo control picks one of four modes from what the hardware offers. The engine's
 | Mode | Use when | How it works | Expected quality |
 |---|---|---|---|
 | `hardware` | The mic array has on-board echo cancellation | RAL sends all playback through that device so it sees the reference, takes the processed channel and turns software AEC off. Example: the XMOS XVF3800 processes 4 mics against one mono reference on the left input channel, with a 192 ms tail | Best, if the array is placed well |
+
 | `loopback` | The capture stream already contains reference channels on the same clock (common on robot HALs that return mic and speaker loopback together) | WebRTC AEC3 with the reference channels; delay is small and stable | Good |
 | `software_ref` | RAL is the only thing that plays audio, but no loopback exists | The reference is exactly what RAL rendered, with its estimated DAC time; delay comes from the probe and is tracked online; drift is compensated when capture and playback use different clocks | Good when delay is stable; weaker with drift or distorting speakers |
 | `gate` | Audio is played by something RAL cannot see | Mic is attenuated while speech plays plus a tail; barge-in only above the learned echo level, by keyword, or by a button | Usable fallback, not full duplex. `ral doctor` says why you ended up here |
 | `off` | Benchmarks only | The selected mic passes through unchanged | The baseline that `ral bench` and the CI echo tests compare against |
 
 The default AEC engine is WebRTC APM through the LiveKit Python SDK. Its `AudioProcessingModule` offers echo cancellation, noise suppression, high-pass filtering and gain control, with `process_stream` for the mic, `process_reverse_stream` for the far end, `set_stream_delay_ms`, and exactly 10 ms frames. LiveKit's `rtc.AudioFrame` carries int16 samples, so this stage converts float32 frames to int16 and back. Other engines (SpeexDSP, vendor DSPs) plug in as processors.
+
+In `hardware` mode (`HardwareAecPassthrough`) RAL takes the `processed` channel, keeps software AEC off, and still measures levels for barge-in: the raw mic if the firmware exposes one, and the reference from a `reference` channel or from what RAL rendered, so the double-talk detector learns the residual echo the device leaves. The engine refuses `hardware` without a `processed` channel and warns when playback is not on the capture device.
 
 ### Reference alignment
 
@@ -440,7 +443,7 @@ Profiles are validated with pydantic and unknown keys are errors, so a typo cann
 
 ### Device database
 
-A small community-maintained YAML catalogue keyed by USB vendor and product ID (and later by ROS 2 message type) with what each device can do. It turns hard-won knowledge ("this array expects the reference on the left channel") into data that `ral doctor` applies automatically.
+A small community-maintained YAML catalogue keyed by USB vendor and product ID (and later by ROS 2 message type) with what each device can do. It turns hard-won knowledge ("this array expects the reference on the left channel") into data that `ral doctor` applies automatically. It ships inside the package (`ral/devicedb/devices.yaml`) so an installed `ral` has it. Entries match by USB id (when the platform reports it), by a substring of the device name and optionally by the input channel count (one board, several firmwares). Every fact cites a public source; facts no public source states (for example the XVF3800's USB output channel layout) are left out for `ral probe` to measure, and `validated_by: docs` marks entries not yet tested on hardware. `ral doctor` names known devices with their echo mode and channel layout.
 
 ## 7. Integrations
 
@@ -574,7 +577,7 @@ src/ral/
   cli/         # doctor, probe, run, record, replay, bench
   studio/      # local web UI
 ral_ros/       # ROS 2 package (ament_python): node, launch files, actions
-devicedb/      # community device catalogue (YAML)
+devicedb/      # (moved into src/ral/devicedb/ so it ships with the package)
 examples/      # livekit_agent, pipecat_bot, ros2_say, realtime_model
 spikes/        # small experiments, each with its result written down
 tests/         # unit, synthetic echo, simulated rooms, golden recordings

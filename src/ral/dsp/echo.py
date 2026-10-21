@@ -38,6 +38,7 @@ __all__ = [
     "ApmProcessor",
     "DuplexGate",
     "EchoOff",
+    "HardwareAecPassthrough",
     "MicChoice",
     "select_mic",
 ]
@@ -340,4 +341,54 @@ class DuplexGate:
         ctx.info["gate_gain"] = float(new)
         if self.echo_db is not None:
             ctx.info["echo_db"] = self.echo_db
+        return _mono_frame(frame, out)
+
+
+class HardwareAecPassthrough:
+    """``hardware`` mode: the device cancels echo itself; pass its processed channel on.
+
+    The array (an XMOS XVF3000 or XVF3800 board, for example) runs AEC on board against
+    what it plays, so RAL must play through the same device (DESIGN section 5) and takes
+    its ``processed`` channel. Software AEC stays off.
+
+    Levels for barge-in: ``mic_db`` comes from a raw ``mic`` channel if the firmware exposes
+    one (otherwise the processed channel), ``ref_db`` from a ``reference`` channel in the
+    frame or from the reference frames RAL rendered (``ctx.reference``), so the double-talk
+    detector can learn the residual echo the device leaves.
+
+    Args:
+        processed: Which ``processed`` channel to use when there are several.
+
+    Raises:
+        FormatError: If the frame has no ``processed`` channel.
+    """
+
+    def __init__(self, processed: int = 0) -> None:
+        self.processed = processed
+
+    def reset(self) -> None:
+        """Nothing to reset."""
+
+    def process(self, frame: AudioFrame, ctx: FrameContext) -> AudioFrame:
+        cmap = frame.channel_map
+        processed = cmap.indices(ChannelRole.PROCESSED)
+        if not processed:
+            raise FormatError(
+                "Echo mode hardware needs a `processed` channel in capture.channels (the "
+                "device's echo-cancelled output); see `ral doctor` for known devices."
+            )
+        if not 0 <= self.processed < len(processed):
+            raise FormatError(
+                f"processed channel {self.processed} requested, the frame has {len(processed)}."
+            )
+        i = processed[self.processed]
+        out = frame.data[:, i : i + 1].astype(np.float32, copy=True)
+        mics = cmap.indices(ChannelRole.MIC)
+        ctx.info["mic_db"] = rms_db(frame.data[:, mics[0]] if mics else out)
+        refs = cmap.indices(ChannelRole.REFERENCE)
+        if refs:
+            ctx.info["ref_db"] = rms_db(frame.data[:, list(refs)])
+        elif ctx.reference:
+            ctx.info["ref_db"] = rms_db(np.concatenate([r.data[:, 0] for r in ctx.reference]))
+        ctx.info["out_db"] = rms_db(out)
         return _mono_frame(frame, out)

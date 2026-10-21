@@ -3,8 +3,8 @@
 The WebRTC APM does echo cancellation, noise suppression, high-pass filtering and gain
 control in one module, and its lags add up, so the builder merges every APM feature the
 pipeline asks for into one :class:`~ral.dsp.echo.ApmProcessor` when the echo mode is
-``software_ref`` or ``loopback``. In ``gate`` and ``off`` modes the APM features (if any)
-run as a second stage after the gate, with echo cancellation off.
+``software_ref`` or ``loopback``. In ``hardware``, ``gate`` and ``off`` modes the APM
+features (if any) run as a second stage after the first one, with echo cancellation off.
 
 Pipeline stage names: ``aec`` (the echo controller; always present, the mode decides what
 it does), ``noise_suppression``, ``high_pass``, ``agc`` and ``vad``.
@@ -17,12 +17,12 @@ from typing import Literal
 
 from ral.core.errors import FormatError
 from ral.core.processing import Processor
-from ral.dsp.echo import ApmProcessor, DuplexGate, EchoOff, MicChoice
+from ral.dsp.echo import ApmProcessor, DuplexGate, EchoOff, HardwareAecPassthrough, MicChoice
 from ral.dsp.vad import EnergyVad
 
 __all__ = ["EchoMode", "build_capture_chain"]
 
-EchoMode = Literal["software_ref", "loopback", "gate", "off"]
+EchoMode = Literal["hardware", "software_ref", "loopback", "gate", "off"]
 _APM_STAGES = {
     "noise_suppression": "noise_suppression",
     "high_pass": "high_pass_filter",
@@ -56,9 +56,9 @@ def build_capture_chain(
     unknown = [s for s in pipeline if s not in _KNOWN]
     if unknown:
         raise FormatError(f"Unknown pipeline stages {unknown}; known: {sorted(_KNOWN)}.")
-    if mode not in ("software_ref", "loopback", "gate", "off"):
+    if mode not in ("hardware", "software_ref", "loopback", "gate", "off"):
         raise FormatError(
-            f"Echo mode {mode!r} is not available yet; use software_ref, loopback, gate or off."
+            f"Unknown echo mode {mode!r}; use hardware, software_ref, loopback, gate or off."
         )
     ns, hpf, agc = (stage in pipeline for stage in _APM_STAGES)
     chain: list[Processor] = []
@@ -76,7 +76,10 @@ def build_capture_chain(
             )
         )
     else:
-        chain.append(DuplexGate(mic) if mode == "gate" else EchoOff(mic))
+        if mode == "hardware":
+            chain.append(HardwareAecPassthrough())
+        else:
+            chain.append(DuplexGate(mic) if mode == "gate" else EchoOff(mic))
         if ns or hpf or agc:
             chain.append(
                 ApmProcessor(

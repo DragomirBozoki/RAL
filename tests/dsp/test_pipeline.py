@@ -37,9 +37,7 @@ def test_custom_vad_is_used() -> None:
     assert build_capture_chain("off", ["vad"], vad=vad)[-1] is vad
 
 
-@pytest.mark.parametrize(
-    ("mode", "pipeline"), [("hardware", ["aec"]), ("off", ["aec", "beamformer"])]
-)
+@pytest.mark.parametrize(("mode", "pipeline"), [("magic", ["aec"]), ("off", ["aec", "beamformer"])])
 def test_unknown_mode_or_stage(mode: str, pipeline: list[str]) -> None:
     with pytest.raises(FormatError):
         build_capture_chain(mode, pipeline)  # type: ignore[arg-type]
@@ -72,3 +70,10 @@ def test_noise_suppression_lowers_stationary_noise() -> None:
     y = np.concatenate(out)[16000:]
     drop = 10 * np.log10(np.mean(x[16000:] ** 2) / np.mean(y**2))
     assert drop > 10.0
+
+
+def test_hardware_mode_needs_no_livekit_and_adds_apm_after() -> None:
+    from ral.dsp.echo import HardwareAecPassthrough
+
+    chain = build_capture_chain("hardware", ["aec", "vad"])
+    assert [type(s) for s in chain] == [HardwareAecPassthrough, EnergyVad]
