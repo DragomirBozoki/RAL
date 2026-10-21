@@ -16,8 +16,8 @@ the M1 proposal so the room simulation can cover every echo mode.
 | 3 | Simulated rooms in CI for every echo mode | done |
 | 4 | Replay of recordings and `ral bench` | done |
 | 5 | `ral probe` | done (hardware run pending) |
-| 6 | Profile migrations and registry | next |
-| 7 | ROS 2 backend and `ral_ros` | |
+| 6 | Profile migrations and registry | done |
+| 7 | ROS 2 backend and `ral_ros` | next |
 | 8 | Pipecat transport (`integrations/pipecat`) | |
 
 ### M2 done
@@ -56,6 +56,11 @@ the M1 proposal so the room simulation can cover every echo mode.
   dead), delays within 0.2 ms, drift within 30 %. A `hardware` test runs it on real devices.
 - Found in CI after step 3: `test_higher_priority_preempts_with_fade` failed on Windows (an
   underrun gap fooled the fade search; fixed in 21f90db).
+- **Step 6.** `ral.profiles.migrations` (registered dict-to-dict steps, refusal of newer
+  schemas; v1 is current, so the chain is empty and tested with a pretend history),
+  `ral.profiles.registry` (path, `$RAL_PROFILES_PATH`, user folder, built-ins; user files
+  override built-ins for roll-out and roll-back), `ral profile list|show|validate|migrate`,
+  and the built-in `respeaker-usb-v2` profile from the device database (`hardware` mode).
 
 ### M2 decisions
 

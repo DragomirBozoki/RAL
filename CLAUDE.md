@@ -63,6 +63,7 @@ uv run ral models fetch                            # download pinned models (Sil
 uv run ral run --profile laptop                    # run the engine; --play clip.wav, --json, --duration
 uv run ral bench session.mcap -e off -e software_ref  # replay a recording through configs; --demo, --json
 uv run ral probe --out my-robot.yaml                # play sweeps, map channels, write a profile; --simulate, --quiet
+uv run ral profile list                            # profiles by name; show, validate, migrate
 ```
 
 ## Definition of done for a step

@@ -6,7 +6,7 @@ import typer
 from rich.console import Console
 
 from ral import __version__
-from ral.cli import models
+from ral.cli import models, profile
 from ral.cli.bench import bench
 from ral.cli.doctor import doctor
 from ral.cli.probe import probe
@@ -45,3 +45,4 @@ app.command()(run)
 app.command()(bench)
 app.command()(probe)
 app.add_typer(models.app, name="models")
+app.add_typer(profile.app, name="profile")

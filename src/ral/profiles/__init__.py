@@ -10,7 +10,6 @@ from __future__ import annotations
 
 import os
 import re
-from importlib import resources
 from pathlib import Path
 from typing import Any
 
@@ -18,6 +17,8 @@ import yaml
 from pydantic import ValidationError
 
 from ral.core.errors import ConfigError
+from ral.profiles.migrations import migrate
+from ral.profiles.registry import find_profile, list_profiles
 from ral.profiles.schema import Profile
 
 __all__ = ["Profile", "builtin_profiles", "load_profile", "parse_profile"]
@@ -59,6 +60,7 @@ def parse_profile(text: str, source: str = "<profile>") -> Profile:
         raise ConfigError(f"{source} is not valid YAML: {exc}") from exc
     if not isinstance(data, dict):
         raise ConfigError(f"{source} must be a mapping at the top level.")
+    data, _ = migrate(data, source=source)
     data = _expand(data, "profile")
     try:
         return Profile.model_validate(data)
@@ -72,25 +74,21 @@ def parse_profile(text: str, source: str = "<profile>") -> Profile:
 
 def builtin_profiles() -> list[str]:
     """Names of the profiles that ship with RAL."""
-    folder = resources.files("ral.profiles") / "builtin"
-    return sorted(
-        p.name.removesuffix(".yaml") for p in folder.iterdir() if p.name.endswith(".yaml")
-    )
+    return [e.name for e in list_profiles() if e.source == "built-in"]
 
 
 def load_profile(path_or_name: str | Path) -> Profile:
-    """Load a profile file, or a built-in profile by name.
+    """Load a profile by file path or by name (see :mod:`ral.profiles.registry`).
 
     Raises:
-        ConfigError: If the file does not exist or is invalid.
+        ConfigError: If nothing matches or the profile is invalid.
     """
-    path = Path(path_or_name)
-    if not path.is_file() and isinstance(path_or_name, str) and path_or_name in builtin_profiles():
-        text = (resources.files("ral.profiles") / "builtin" / f"{path_or_name}.yaml").read_text(
-            encoding="utf-8"
+    found = find_profile(str(path_or_name))
+    if found is None:
+        known = ", ".join(e.name for e in list_profiles())
+        raise ConfigError(
+            f"No profile file or name {str(path_or_name)!r}; known profiles: {known}. "
+            f"`ral profile list` shows where they come from."
         )
-        return parse_profile(text, f"built-in profile {path_or_name!r}")
-    if not path.is_file():
-        known = ", ".join(builtin_profiles())
-        raise ConfigError(f"No profile file {str(path)!r}; built-in profiles: {known}.")
-    return parse_profile(path.read_text(encoding="utf-8"), str(path))
+    text, source = found
+    return parse_profile(text, source)

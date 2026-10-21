@@ -5,8 +5,9 @@ echo mode and pipeline to run, and which bridges to start. Unknown keys are erro
 typo does not silently fall back to a default.
 
 Backends: ``portaudio`` and ``file``. Echo modes: ``hardware``, ``software_ref``,
-``loopback``, ``gate`` and ``off``. TODO(M2): ``ros2_topic`` backends, decoder plugins and
-migrations between schema versions arrive in later M2 steps.
+``loopback``, ``gate`` and ``off``. Older schema versions are upgraded by
+:mod:`ral.profiles.migrations` before validation. TODO(M2): ``ros2_topic`` backends and
+decoder plugins arrive in the ROS 2 step.
 """
 
 from __future__ import annotations

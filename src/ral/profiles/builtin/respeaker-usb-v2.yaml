@@ -1,0 +1,21 @@
+# ReSpeaker USB Mic Array v2.0 (XMOS XVF3000) with the 6-channel firmware.
+# Built from the vendor documentation via the device database (ral/devicedb/devices.yaml);
+# not yet tested on hardware by RAL. Run `ral probe` to confirm on your board.
+ral: 1
+robot:
+  model: respeaker-usb-v2-6ch
+  validated_by: community
+capture:
+  backend: portaudio
+  device: ReSpeaker 4 Mic Array
+  channels: [processed, mic, mic, mic, mic, reference]
+  format: {rate: 16000, channels: 6, dtype: float32}
+playback:
+  backend: portaudio
+  device: ReSpeaker 4 Mic Array   # play through the array so its AEC sees the reference
+echo:
+  mode: hardware
+pipeline: [aec, vad]              # the array already suppresses noise
+vad: {engine: silero}
+barge_in: {policy: vad+dtd}
+recording: {enabled: false}

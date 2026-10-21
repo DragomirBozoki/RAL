@@ -75,7 +75,7 @@ def test_errors_say_where(text: str, where: str) -> None:
 def test_bad_yaml_and_missing_file(tmp_path: Path) -> None:
     with pytest.raises(ConfigError, match="not valid YAML"):
         parse_profile("a: [1, 2")
-    with pytest.raises(ConfigError, match="built-in profiles: laptop"):
+    with pytest.raises(ConfigError, match="known profiles: laptop"):
         load_profile(tmp_path / "nope.yaml")
 
 

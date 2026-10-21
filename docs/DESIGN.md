@@ -441,7 +441,7 @@ bridges:
 recording: {enabled: false}
 ```
 
-Profiles are validated with pydantic and unknown keys are errors, so a typo cannot silently fall back to a default. `${VAR}` and `${VAR:-default}` in strings come from the environment, so secrets stay in `.env`. A bare `off` in YAML 1.1 is the boolean false; the schema accepts it as the string `off` where a mode or policy is expected. Built-in profiles ship in `ral/profiles/builtin/` (`ral run --profile laptop`).
+Profiles are found by `ral.profiles.registry`: a file path, then the folders in `$RAL_PROFILES_PATH`, then the user's profile folder, then the built-in set (`laptop`, `respeaker-usb-v2`); a user profile with a built-in name overrides it, which is how a tuned profile is rolled out and, by deleting it, rolled back. Older schema versions pass through `ral.profiles.migrations` (pure dict-to-dict steps, one per version) before validation; a profile newer than RAL is refused with an upgrade hint. `ral profile list | show | validate | migrate` manage them. Profiles are validated with pydantic and unknown keys are errors, so a typo cannot silently fall back to a default. `${VAR}` and `${VAR:-default}` in strings come from the environment, so secrets stay in `.env`. A bare `off` in YAML 1.1 is the boolean false; the schema accepts it as the string `off` where a mode or policy is expected. Built-in profiles ship in `ral/profiles/builtin/` (`ral run --profile laptop`).
 
 ### Device database
 
