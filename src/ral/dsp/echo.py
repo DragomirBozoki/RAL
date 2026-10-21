@@ -285,32 +285,53 @@ class DuplexGate:
         ramp_ms: Gain ramp length, so gating does not click.
         learn_rate: Weight of each speaking frame in the echo level estimate.
 
-    The learned echo level is written to ``info["echo_db"]``: an exponential average of
-    the mic level over frames where the robot speaks. Barge-in in ``gate`` mode requires
-    the raw mic (``info["mic_db"]``) clearly above it.
+    The learned echo level is written to ``info["echo_db"]``: a peak-hold of the mic level
+    while the robot speaks, decaying by ``decay_db_per_s``. An average would lag behind the
+    loud start of every utterance and invite false barge-ins. Frames more than
+    ``outlier_db`` above the learned level are not learned: they are likely a user, not
+    echo. Barge-in in ``gate`` mode requires the raw mic (``info["mic_db"]``) clearly above
+    the learned level.
     """
 
     def __init__(
         self,
         mic: MicChoice = 0,
         *,
-        attenuation_db: float = -30.0,
+        attenuation_db: float = -45.0,
         tail_ms: int = 200,
         ramp_ms: int = 10,
-        learn_rate: float = 0.05,
+        decay_db_per_s: float = 3.0,
+        outlier_db: float = 10.0,
+        learn_ms: int = 300,
     ) -> None:
         self.mic = mic
         self.gate_gain = db_to_gain(min(attenuation_db, 0.0))
         self.tail_ns = tail_ms * 1_000_000
         self.ramp_ns = max(1, ramp_ms) * 1_000_000
-        self.learn_rate = learn_rate
+        self.decay_db_per_s = decay_db_per_s
+        self.outlier_db = outlier_db
+        self.learn_frames = max(1, learn_ms // 10)
         self.reset()
 
     def reset(self) -> None:
         self._gain = 1.0
         self._last_speaking_ns: int | None = None
+        self._learned = 0
         self.echo_db: float | None = None
         """Learned echo level in dBFS, or None before the robot has spoken."""
+
+    def _learn_echo(self, level: float, frame_ns: int) -> None:
+        if level <= SILENCE_DB:
+            return
+        self._learned += 1
+        if self.echo_db is None:
+            self.echo_db = level
+            return
+        warmed_up = self._learned > self.learn_frames
+        if level > self.echo_db and not (warmed_up and level > self.echo_db + self.outlier_db):
+            self.echo_db = level
+        else:
+            self.echo_db -= self.decay_db_per_s * frame_ns / 1e9
 
     def process(self, frame: AudioFrame, ctx: FrameContext) -> AudioFrame:
         data = select_mic(frame, self.mic)
@@ -318,12 +339,7 @@ class DuplexGate:
         ctx.info["mic_db"] = level
         if ctx.robot_speaking:
             self._last_speaking_ns = frame.t_ns
-            if level > SILENCE_DB:
-                self.echo_db = (
-                    level
-                    if self.echo_db is None
-                    else (1 - self.learn_rate) * self.echo_db + self.learn_rate * level
-                )
+            self._learn_echo(level, frame.fmt.frame_ns)
         closed = self._last_speaking_ns is not None and (
             frame.t_ns - self._last_speaking_ns <= self.tail_ns
         )

@@ -13,8 +13,8 @@ the M1 proposal so the room simulation can cover every echo mode.
 |---|---|---|
 | 1 | `loopback` echo mode | done |
 | 2 | `hardware` echo mode and device database | done |
-| 3 | Simulated rooms in CI for every echo mode | next |
-| 4 | Replay of recordings and `ral bench` | |
+| 3 | Simulated rooms in CI for every echo mode | done |
+| 4 | Replay of recordings and `ral bench` | next |
 | 5 | `ral probe` | |
 | 6 | Profile migrations and registry | |
 | 7 | ROS 2 backend and `ral_ros` | |
@@ -35,9 +35,19 @@ the M1 proposal so the room simulation can cover every echo mode.
   count; `ral doctor` reports known devices with echo mode and layout). Entries: ReSpeaker
   USB Mic Array v2.0 (XVF3000) 6- and 1-channel firmware, XMOS XVF3800; only documented
   facts, `validated_by: docs`.
+- **Step 3.** `ral.bench.room` (pyroomacoustics shoebox: speaker under two mics, user at
+  1.5 m, levels calibrated at the mic; captures for every mode) and `tests/bench/test_rooms.py`
+  (12 tests). Numbers: self-trigger 36/min without echo control, 0 with `software_ref`,
+  `loopback`, `hardware` and `gate`; ERLE 47 dB; barge-in at 12.0 s (`hardware`) and 13.1 to
+  13.2 s (APM modes) for a user starting at 12.0 s, 12 dB below the echo. Changes found by
+  the room: barge-in now counts passing frames (gap 200 ms) because AEC3 chops a quieter
+  user; the gate attenuates 45 dB (was 30) and learns the echo as a peak-hold (was an
+  average that lagged at utterance starts and caused false barge-ins).
 
 ### M2 decisions
 
+- 2026-10-21 (step 3): the simulated array's residual echo is -45 dB, an assumption until
+  `ral probe` and `ral bench` measure a real one; at -35 dB the energy VAD self-triggers.
 - 2026-10-21 (step 2): the device database lives in `src/ral/devicedb/` (not top-level
   `devicedb/`) so it ships with the package. The XVF3800's USB output channel layout and USB
   ids are not in the public datasheet, so the entry leaves them out; `ral probe` maps them.

@@ -9,9 +9,11 @@ Runs after the VAD on the clean stream, only while the robot is speaking. Polici
   residual clearly above the echo it predicts, *and* the residual does not follow the
   reference (echo-leak guard).
 
-Every condition must hold for ``min_speech_ms`` (250 ms by default; gaps up to
-``gap_ms`` are tolerated). ``BargeIn.t_ns`` is when the interrupting speech began.
-After a barge-in the detector stays quiet until the robot has stopped speaking.
+The conditions must hold for ``min_speech_ms`` in total (250 ms by default), counting
+only the frames where they hold; a pause longer than ``gap_ms`` (200 ms) starts over.
+Counting frames matters in double talk: AEC3's suppressor lets a quieter user through
+only between the robot's syllables. ``BargeIn.t_ns`` is when the interrupting speech
+began. After a barge-in the detector stays quiet until the robot has stopped speaking.
 
 Double-talk detection. During robot-only speech the detector learns how loud the
 residual is relative to the reference (``leak_db``: the echo the canceller leaves). The
@@ -69,7 +71,7 @@ class BargeInDetector:
         policy: BargeInPolicy = "vad+dtd",
         *,
         min_speech_ms: int = 250,
-        gap_ms: int = 60,
+        gap_ms: int = 200,
         energy_db: float = -40.0,
         dtd_margin_db: float = 10.0,
         guard_ms: int = 600,
@@ -103,6 +105,7 @@ class BargeInDetector:
         self._echo_frames = 0
         self._start: int | None = None
         self._last_ok: int | None = None
+        self._ok_ns = 0
         self._fired = False
         self._last_leak_event: int | None = None
         self._out_env: deque[float] = deque(maxlen=self.guard_frames + self.guard_lags)
@@ -146,8 +149,13 @@ class BargeInDetector:
                 self._last_ok is not None and t - self._last_ok > self.gap_ns
             ):
                 self._start = t
+                self._ok_ns = 0
             self._last_ok = t
-            if t + frame.fmt.frame_ns - self._start >= self.min_speech_ns:
+            # Count the frames that pass, not the wall-clock span: during double talk the
+            # canceller's suppressor lets a quieter user through only between the robot's
+            # syllables, so the evidence arrives in bursts.
+            self._ok_ns += frame.fmt.frame_ns
+            if self._ok_ns >= self.min_speech_ns:
                 span = (t - self._start) // frame.fmt.frame_ns + 1
                 if self.policy == "vad+dtd" and self._leaking(span):
                     self._emit_leak(t, ctx)

@@ -52,7 +52,6 @@ record = [
 server = [
     "websockets>=13",    # BSD-3-Clause; WebSocket bridge. TODO: fastapi, grpcio for the control API
 ]
-# TODO(M2): add pyroomacoustics to dev once simulated-room tests exist.
 dev = [
     "mypy>=1.10",
     "pip-licenses>=5.0",
@@ -61,6 +60,8 @@ dev = [
     "pytest-asyncio>=0.23",
     "ruff>=0.5",
     "types-pyyaml>=6.0",
+    # MIT; room simulation for tests. No CPython 3.10 wheel on Linux aarch64: skipped there.
+    "pyroomacoustics>=0.7; platform_machine != 'aarch64' or python_version >= '3.11'",
 ]
 
 [project.scripts]
@@ -103,7 +104,7 @@ strict = true
 
 [[tool.mypy.overrides]]
 # Optional dependencies without type information; RAL wraps them behind typed classes.
-module = ["sounddevice", "rclpy", "rclpy.*", "onnxruntime"]
+module = ["sounddevice", "rclpy", "rclpy.*", "onnxruntime", "pyroomacoustics"]
 ignore_missing_imports = true
 
 [tool.pytest.ini_options]
