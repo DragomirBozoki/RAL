@@ -61,6 +61,7 @@ uv run ral --help
 uv run ral doctor                                  # read-only host and device check; --json
 uv run ral models fetch                            # download pinned models (Silero VAD) into the cache
 uv run ral run --profile laptop                    # run the engine; --play clip.wav, --json, --duration
+uv run ral bench session.mcap -e off -e software_ref  # replay a recording through configs; --demo, --json
 ```
 
 ## Definition of done for a step

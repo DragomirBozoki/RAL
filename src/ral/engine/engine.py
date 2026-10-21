@@ -27,15 +27,12 @@ from typing import Any
 
 from ral.core.bus import EventBus
 from ral.core.clock import now_ns
-from ral.core.errors import ConfigError, RalError
+from ral.core.errors import ConfigError
 from ral.core.events import BargeIn, Event, RecordingStarted, RecordingStopped
-from ral.core.processing import Processor
 from ral.core.protocols import AudioSink, AudioSource
 from ral.core.types import AudioFormat, AudioFrame, ChannelMap, ChannelRole
-from ral.dsp.bargein import BargeInDetector
-from ral.dsp.pipeline import build_capture_chain
-from ral.dsp.vad import EnergyVad
 from ral.engine.capture import CaptureGraph, CaptureResult
+from ral.engine.stages import build_stages
 from ral.metrics.latency import LatencyTracker
 from ral.playback.reference import ReferenceBuffer
 from ral.playback.service import PlaybackQueue
@@ -167,20 +164,8 @@ class Engine:
         if p.echo.mode == "hardware":
             self._check_hardware(source)
         playback = self.playback
-        stages: list[Processor] = build_capture_chain(
-            p.echo.mode,
-            p.pipeline,
-            mic=p.echo.mic,
-            lead_ms=p.echo.lead_ms,
-            mic_delay_ms=p.echo.mic_delay_ms,
-            vad=self._make_vad(),
-        )
-        stages.append(
-            BargeInDetector(
-                p.barge_in.policy,
-                min_speech_ms=p.barge_in.min_speech_ms,
-                current_tag=lambda: playback.current.tag if playback.current else None,
-            )
+        stages = build_stages(
+            p, current_tag=lambda: playback.current.tag if playback.current else None
         )
         self.graph = CaptureGraph(
             source.fmt,
@@ -344,21 +329,6 @@ class Engine:
                 f"with {channels} channels; list one role per channel."
             )
         return ChannelMap.from_names(cfg.channels)
-
-    def _make_vad(self) -> Processor:
-        v = self.profile.vad
-        if v.engine == "silero":
-            try:
-                from ral.dsp.silero import SileroVad
-
-                return SileroVad(
-                    threshold=v.threshold, min_speech_ms=v.min_speech_ms, hangover_ms=v.hangover_ms
-                )
-            except RalError as exc:
-                log.warning("Silero VAD unavailable (%s); using the energy VAD instead.", exc)
-        return EnergyVad(
-            threshold=v.threshold, min_speech_ms=v.min_speech_ms, hangover_ms=v.hangover_ms
-        )
 
     # Capture and DSP
 

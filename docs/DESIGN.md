@@ -492,7 +492,7 @@ One MCAP file per session with channels for raw mic, reference, processed audio,
 
 ### Replay modes
 
-- **Offline:** feed recorded mic and reference through another echo, noise or VAD configuration and compare outputs; no hardware needed.
+- **Offline:** feed recorded mic and reference through another echo, noise or VAD configuration and compare outputs; no hardware needed. `ral.record.replay` rebuilds the inputs (mic frames with roles, reference frames with DAC times, playback intervals from the events) and runs them through the same `CaptureGraph` and `build_stages` the engine uses. `ral bench SESSION --echo A --echo B` (or `--config profile.yaml`, `--vad`, `--json`) prints them side by side: ERLE while the robot spoke (a lower bound, double talk included; for `gate` it is the attenuation), speech starts during robot speech per minute (an upper bound of the self-trigger rate without labels), barge-ins, echo leaks and processing time per frame. Turn latency comes from the recording, because the agent cannot be replayed. `ral bench --demo` does the same on a synthetic session.
 - **Hardware in the loop:** play recorded human speech through a speaker at set distances and noise levels toward a real robot, and score the robot's capture.
 
 ### Metrics

@@ -228,6 +228,7 @@ class Recording:
     events: list[Event] = field(default_factory=list)
     metadata: dict[str, dict[str, str]] = field(default_factory=dict)
     roles: dict[str, str] = field(default_factory=dict)
+    rates: dict[str, int] = field(default_factory=dict)
 
     def signal(self, topic: str) -> npt.NDArray[np.int16]:
         """All blocks of one audio topic concatenated, ``(samples, channels)``."""
@@ -272,4 +273,5 @@ def read_recording(path: str | Path) -> Recording:
         block = pcm.reshape(-1, int(payload["number_of_channels"]))
         rec.audio.setdefault(channel.topic, []).append((message.log_time, block))
         rec.roles[channel.topic] = channel.metadata.get("roles", "")
+        rec.rates[channel.topic] = int(payload["sample_rate"])
     return rec

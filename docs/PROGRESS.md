@@ -14,8 +14,8 @@ the M1 proposal so the room simulation can cover every echo mode.
 | 1 | `loopback` echo mode | done |
 | 2 | `hardware` echo mode and device database | done |
 | 3 | Simulated rooms in CI for every echo mode | done |
-| 4 | Replay of recordings and `ral bench` | next |
-| 5 | `ral probe` | |
+| 4 | Replay of recordings and `ral bench` | done |
+| 5 | `ral probe` | next |
 | 6 | Profile migrations and registry | |
 | 7 | ROS 2 backend and `ral_ros` | |
 | 8 | Pipecat transport (`integrations/pipecat`) | |
@@ -43,6 +43,11 @@ the M1 proposal so the room simulation can cover every echo mode.
   the room: barge-in now counts passing frames (gap 200 ms) because AEC3 chops a quieter
   user; the gate attenuates 45 dB (was 30) and learns the echo as a peak-hold (was an
   average that lagged at utterance starts and caused false barge-ins).
+- **Step 4.** `ral.record.replay` (`load_session`, `RecordedReference`, `replay`),
+  `ral.engine.stages.build_stages` (shared by engine, replay and bench), `ral.bench.report`
+  (`bench_rows`, `write_scene_recording`) and `ral bench` (`--echo`, `--config`, `--vad`,
+  `--demo`, `--json`). Recordings now keep each channel's sample rate when read back.
+  Demo: off 31 starts/min and 0.5 dB, `software_ref` 0 starts/min and 52.6 dB.
 
 ### M2 decisions
 
