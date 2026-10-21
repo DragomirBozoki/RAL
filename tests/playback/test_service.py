@@ -66,14 +66,20 @@ async def test_higher_priority_preempts_with_fade(rig_factory: RigFactory) -> No
         assert await rig.queue.wait(high) is False
         await asyncio.sleep(0.1)  # the file sink renders on coarse timer ticks
     out = rig.output()[:, 0]
-    start = int(np.argmax(out > 0.4))
-    fade_start = start + int(np.argmax(out[start:] < 0.49))
     at_alert = (np.abs(out - 0.25) < 1e-3).astype(int)
     alert = np.flatnonzero(np.convolve(at_alert, np.ones(160, int), "valid") == 160)
     assert alert.size > 0  # a run of at least one frame at the alert level
-    fade = out[fade_start : alert[0]]
-    fade = fade[fade > 1e-4]
-    assert np.all(np.diff(fade) <= 1e-6)  # a smooth ramp down, not a cut
+    # Walk back from the alert: skip silence, then follow the ramp up to the music level.
+    # (Searching forwards is fooled by underrun gaps a slow CI machine puts in the music.)
+    i = alert[0] - 1
+    while i > 0 and out[i] <= 1e-4:
+        i -= 1
+    end = i
+    while i > 0 and out[i - 1] >= out[i] - 1e-6 and out[i - 1] < 0.4999:
+        i -= 1
+    fade = out[i : end + 1]
+    assert out[i - 1] >= 0.49  # the ramp starts at full music level, not at a cut
+    assert np.all(np.diff(fade) <= 1e-6)  # a smooth ramp down
     assert 400 <= fade.size <= 660  # most of the 40 ms (640 samples) raised cosine
     assert not np.any(out[alert[0] :] > 0.3)  # the music never comes back
     # Ended(music) and Started(alert) share one DAC time, so check the timeline by t_ns.
