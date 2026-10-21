@@ -1,0 +1,33 @@
+[build-system]
+requires = ["hatchling>=1.25"]
+build-backend = "hatchling.build"
+
+[project]
+name = "ral-pipecat"
+version = "0.0.1.dev0"
+description = "Pipecat transport for RAL (Robot Audio Layer): a robot's clean mic and speaker as a Pipecat transport"
+readme = "README.md"
+license = "Apache-2.0"
+authors = [{ name = "The RAL Authors" }]
+# pipecat-ai needs Python 3.11+, while RAL's core supports 3.10 (ROS 2 Humble), so this
+# lives in its own package. Note: pipecat-ai depends on soxr (LGPL-2.1).
+requires-python = ">=3.11"
+dependencies = [
+    "pipecat-ai>=1.0",      # BSD-2-Clause
+    "ral-audio[server]",    # Apache-2.0; talks to RAL's WebSocket bridge
+    "websockets>=13",       # BSD-3-Clause
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8.2", "pytest-asyncio>=0.23"]
+
+[tool.uv.sources]
+ral-audio = { path = "../..", editable = true }
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/ral_pipecat"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
+testpaths = ["tests"]

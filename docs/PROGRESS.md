@@ -1,6 +1,6 @@
 # Progress
 
-## Current milestone: M2, robots and measurement (v0.2)
+## Current milestone: M2, robots and measurement (v0.2): code complete, hardware and ROS 2 checks pending
 
 See `docs/DESIGN.md` section 10. Approved 2026-10-21: all steps in a row with commit, push
 and CI after each; Pipecat as a separate package under `integrations/pipecat` (it needs
@@ -18,7 +18,7 @@ the M1 proposal so the room simulation can cover every echo mode.
 | 5 | `ral probe` | done (hardware run pending) |
 | 6 | Profile migrations and registry | done |
 | 7 | ROS 2 backend and `ral_ros` | done (needs a ROS 2 machine) |
-| 8 | Pipecat transport (`integrations/pipecat`) | next |
+| 8 | Pipecat transport (`integrations/pipecat`) | done |
 
 ### M2 done
 
@@ -86,6 +86,50 @@ Expected: `ral doctor` lists `/hal/audio/capture` with type
 `SpeechEnded` for the speech in the WAV. Then build `ral_ros` with colcon and run
 `ros2 launch ral_ros robot.launch.py profile:=examples/ros2/topic_loop.yaml`; in another
 shell `ros2 topic echo /ral/events` should show the same events.
+
+- **Step 8.** `integrations/pipecat` (package `ral-pipecat`, Python 3.11+): `RalTransport`
+  with input (clean frames, RAL barge-in as a Pipecat interruption, `on_ral_event`) and
+  output (one RAL utterance per bot turn at any sample rate, 100 ms send lead, ends on
+  `BotStoppedSpeaking`, Pipecat interruptions sent as `interrupt`). RAL's WebSocket `play`
+  now takes a `rate`. Three tests run a real RAL engine and a Pipecat pipeline in one
+  process; CI has a job for them (Ubuntu, 3.12). Found: RAL's resampler holds an
+  utterance's last frame until `end`, so ending only on idle played it 300 ms late; the
+  transport ends on Pipecat's ordered stop signal instead.
+
+### M2 acceptance (DESIGN section 10)
+
+| Criterion | State |
+|---|---|
+| The probe writes a working profile for a USB array and for a laptop | simulated arrays and laptop-like setups map correctly and the profiles load; real devices wait for the maintainer (`uv run pytest -m hardware tests/probe`) |
+| Replaying one recorded session through two configurations gives a side-by-side bench report | yes (`ral bench`, tested on synthetic and engine-made recordings) |
+| At least one profile contributed or validated by someone else | open: needs an outside contributor |
+
+### M2 maintainer tasks
+
+1. Laptop: `uv run pytest -m hardware` (now 4 tests: the three from M0 and the probe), then
+   `uv run ral probe --out laptop.yaml` and `uv run ral run --profile laptop.yaml`.
+2. Record a session (`ral run --record --duration 60`) and compare configurations:
+   `uv run ral bench recordings/ral-<id>.mcap -e off -e software_ref -e gate`.
+3. If you get a ReSpeaker USB Mic Array v2.0 or an XVF3800 board: `ral doctor` should name
+   it; `ral probe` should find the processed channel; compare with
+   `ral run --profile respeaker-usb-v2`.
+4. Ubuntu with ROS 2: the commands under step 7.
+5. Pipecat: `cd integrations/pipecat && uv sync --python 3.12 --extra dev`, run RAL with
+   `--bridge websocket` and a Pipecat bot with `RalTransport`.
+
+## Next: proposed M3 (field readiness, v0.3), not started
+
+DESIGN section 10 plus what M2 left open:
+
+1. Drift compensation: a slowly varying resampling ratio for the reference (the
+   resampler from M1 step 1 gets a variable ratio, or `samplerate` where wheels exist).
+2. Online delay tracking (GCC-PHAT) feeding the reference lead.
+3. Health monitor: xruns, clipping, dead channels, noise-floor drift, `DeviceLost`.
+4. OpenTelemetry and Prometheus export of latency, echo and health metrics.
+5. Local Studio UI: meters, spectrogram, channel-map editor, echo-mode switch.
+6. ROS 2 interface package: `Say` and `PlayAudio` actions, `stop` and `duck` services.
+7. Engine in its own process if profiling shows the GIL starving the DSP thread.
+8. Partner-validated robot profiles (needs partners).
 
 ### M2 decisions
 

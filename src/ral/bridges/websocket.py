@@ -15,8 +15,9 @@ Server to client
 Client to server
     - Binary: audio to play, int16 little-endian mono at the playback rate, any length.
       Chunks join the connection's current utterance; the first chunk starts one if needed.
-    - ``{"type": "play", "tag": "answer", "priority": 50, "interruptible": true}`` starts a
-      new utterance (ending the previous one).
+    - ``{"type": "play", "tag": "answer", "priority": 50, "interruptible": true,
+      "rate": 24000}`` starts a new utterance (ending the previous one); ``rate`` is the
+      sample rate of the binary audio that follows (default: the playback rate).
     - ``{"type": "end"}`` ends the current utterance once its audio has played.
     - ``{"type": "stop", "fade_ms": 40}`` stops this connection's utterance.
     - ``{"type": "interrupt"}`` fades out whatever is playing (like a barge-in).
@@ -193,14 +194,22 @@ class WebSocketBridge:
             await client.conn.send(message)
 
     def _start_utterance(
-        self, client: _Client, tag: str = "ws", priority: int = 50, interruptible: bool = True
+        self,
+        client: _Client,
+        tag: str = "ws",
+        priority: int = 50,
+        interruptible: bool = True,
+        rate: int | None = None,
     ) -> None:
         engine = self._engine
         assert engine is not None
         assert engine.playback is not None
+        if rate is not None and rate <= 0:
+            raise ValueError(f"rate must be positive, got {rate}")
         if client.stream is not None:
             client.stream.end()
-        client.stream = PcmStream(engine.engine_fmt.sample_rate, engine.engine_fmt)
+        # Audio at another rate (a TTS at 24 kHz, say) is resampled to the engine rate.
+        client.stream = PcmStream(rate or engine.engine_fmt.sample_rate, engine.engine_fmt)
         client.handle = engine.playback.play(
             aiter(client.stream), priority=priority, interruptible=interruptible, tag=tag
         )
@@ -227,6 +236,7 @@ class WebSocketBridge:
                     str(msg.get("tag", "ws")),
                     int(msg.get("priority", 50)),
                     bool(msg.get("interruptible", True)),
+                    int(msg["rate"]) if "rate" in msg else None,
                 )
             elif kind == "end":
                 if client.stream is not None:

@@ -69,6 +69,19 @@ jobs:
       - name: Core import works without optional dependencies
         run: python -c "import ral; print(ral.__version__)" && ral --version
 
+  pipecat:
+    name: pipecat integration (ubuntu, py3.12)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: integrations/pipecat
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v7
+      - run: uv sync --python 3.12 --extra dev
+      - run: uv run pytest
+
   licences:
     runs-on: ubuntu-latest
     steps:

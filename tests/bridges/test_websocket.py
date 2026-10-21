@@ -119,3 +119,18 @@ def test_config_validation() -> None:
 
 def test_listens_on_localhost_by_default() -> None:
     assert WebSocketBridge().host == "127.0.0.1"
+
+
+async def test_play_at_another_rate_is_resampled(running: tuple[Engine, WebSocketBridge]) -> None:
+    _, bridge = running
+    async with connect(f"ws://127.0.0.1:{bridge.port}?audio=0") as ws:
+        await ws.recv()
+        await ws.send(json.dumps({"type": "play", "tag": "tts", "rate": 24000}))
+        tone = (0.3 * np.sin(2 * np.pi * 440 * np.arange(7200) / 24000) * 32767).astype("<i2")
+        await ws.send(tone.tobytes())  # 300 ms at 24 kHz
+        await ws.send(json.dumps({"type": "end"}))
+        started = await next_text(ws, "PlaybackStarted")
+        ended = await next_text(ws, "PlaybackEnded")
+        assert ended["t_ns"] - started["t_ns"] == 300_000_000
+        await ws.send(json.dumps({"type": "play", "rate": -1}))
+        assert "rate" in (await next_text(ws, "error"))["message"]
