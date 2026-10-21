@@ -74,4 +74,4 @@ def test_cli_migrate_reports_current_files(tmp_path: Path) -> None:
     f.write_text("ral: 1\n")
     result = runner.invoke(app, ["profile", "migrate", str(f)])
     assert result.exit_code == 0
-    assert "already at the current schema" in result.output
+    assert "already at the current schema" in " ".join(result.output.split())  # rich wraps
