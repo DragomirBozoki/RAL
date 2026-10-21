@@ -5,6 +5,7 @@ import numpy as np
 import pytest
 
 from ral.core import events as ev
+from ral.core import now_ns
 from ral.metrics.latency import LatencyTracker
 
 MS = 1_000_000
@@ -75,11 +76,13 @@ async def test_engine_reports_a_turn(tmp_path: Path) -> None:
     turns = engine.bus.subscribe(ev.TurnLatency)
     async with engine:
         await asyncio.wait_for(ended.get(), 8)  # the user stopped speaking
+        t_heard = now_ns()
         await asyncio.sleep(0.1)  # the "agent" thinks
         assert engine.playback is not None
+        thought_ms = (now_ns() - t_heard) / 1e6  # asyncio timers are coarse on Windows
         engine.playback.play(audio_frames(np.zeros(1600, np.float32)), tag="ws")
         turn = await asyncio.wait_for(turns.get(), 3)
     assert isinstance(turn, ev.TurnLatency)
-    assert 80 <= turn.agent_ms < 600  # 100 ms of "thinking"; asyncio timers are coarse on Windows
+    assert thought_ms - 1 <= turn.agent_ms < thought_ms + 300
     assert turn.hangover_ms >= 150  # the 200 ms VAD hangover, measured
     assert turn.total_ms == pytest.approx(turn.hangover_ms + turn.agent_ms + turn.playback_ms)
