@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import time
 import wave
 from collections.abc import AsyncIterator, Mapping
 from pathlib import Path
@@ -58,11 +59,18 @@ def _read_wav_format(path: Path) -> tuple[int, int]:
     return rate, channels
 
 
+# asyncio runs every timer due within one step of its clock (time.monotonic: 15.6 ms on
+# Windows before Python 3.13), so a shorter sleep returns at once.
+_LOOP_STEP_S = time.get_clock_info("monotonic").resolution
+
+
 async def _sleep_until(deadline_ns: int) -> None:
-    # asyncio schedules on its own clock (time.monotonic, 15.6 ms steps on Windows before
-    # 3.13) and may fire a timer up to one of those steps early, so check our clock again.
+    # Timers may fire up to one clock step early, so check our clock again. Sleeping at
+    # least one step instead of retrying at once keeps the loop from spinning, which held
+    # the GIL and starved the DSP thread (spikes/dsp_gil_load.py); a frame is then late by
+    # at most one step, like a sound card's block, and the next frames catch up.
     while (delay := deadline_ns - now_ns()) > 0:
-        await asyncio.sleep(delay / 1e9)
+        await asyncio.sleep(max(delay / 1e9, _LOOP_STEP_S))
 
 
 class FileSource:
