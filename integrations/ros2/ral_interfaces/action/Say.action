@@ -1,0 +1,14 @@
+# Speak text with the TextToSpeech adapter the RAL bridge was given.
+# Goal
+string text
+string tag
+int32 priority 50
+bool interruptible true
+---
+# Result
+bool interrupted
+string reason                # finished, interrupted or cancelled
+float32 played_s
+---
+# Feedback
+float32 played_s

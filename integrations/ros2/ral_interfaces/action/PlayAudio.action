@@ -1,0 +1,15 @@
+# Play a clip through RAL's playback service (so echo control hears it).
+# Goal
+uint8[] data                 # 16-bit little-endian PCM, mono
+uint32 sample_rate 0         # 0: the engine rate; other rates are resampled
+string tag
+int32 priority 50            # higher plays first
+bool interruptible true      # false: barge-in does not cut it
+---
+# Result
+bool interrupted             # cut by barge-in, the stop service or a cancel
+string reason                # finished, interrupted or cancelled
+float32 played_s             # audio handed to the speaker
+---
+# Feedback
+float32 played_s

@@ -1,0 +1,5 @@
+# Fade out what RAL is playing and drop what is queued.
+uint32 fade_ms 40
+bool all false               # also stop items marked not interruptible
+---
+bool stopped                 # something was playing or queued

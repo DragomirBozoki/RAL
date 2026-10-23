@@ -2,7 +2,12 @@
 
 Only the API surface RAL calls (checked against rclpy's humble sources): ``init``,
 ``shutdown``, ``create_node``, ``context.Context``, ``qos`` policies and profile,
-``executors.SingleThreadedExecutor``, node publishers, subscriptions, clock and graph.
+``executors.SingleThreadedExecutor`` and ``MultiThreadedExecutor``,
+``callback_groups.ReentrantCallbackGroup``, ``action.ActionServer`` with
+``GoalResponse``/``CancelResponse``, node publishers, subscriptions, services, clock and
+graph, plus the ``ral_interfaces`` action and service types. Goals and service calls come
+from the test through :func:`send_goal` and :func:`call_service`; each goal executes on a
+thread of its own, like a worker of a multi-threaded executor.
 Messages published on any node reach every subscription of the same topic and type,
 delivered on the executor's own thread, as with a real executor. ROS time is wall time
 (``time.time_ns``), deliberately not the RAL clock, so time mapping is exercised.
@@ -29,6 +34,8 @@ class Graph:
         )  # topic -> (type, cb, executor)
         self.pubs: dict[str, list[Any]] = defaultdict(list)
         self.latched: dict[str, list[Any]] = defaultdict(list)
+        self.actions: dict[str, ActionServer] = {}
+        self.services: dict[str, tuple[Any, Any]] = {}
 
 
 GRAPH = Graph()
@@ -72,6 +79,68 @@ class AudioInfo:
 @dataclass
 class String:
     data: str = ""
+
+
+# ral_interfaces -----------------------------------------------------------------------
+
+
+@dataclass
+class _ActionResult:
+    interrupted: bool = False
+    reason: str = ""
+    played_s: float = 0.0
+
+
+@dataclass
+class _ActionFeedback:
+    played_s: float = 0.0
+
+
+class PlayAudio:
+    @dataclass
+    class Goal:
+        data: Any = field(default_factory=lambda: array.array("B"))
+        sample_rate: int = 0
+        tag: str = ""
+        priority: int = 50
+        interruptible: bool = True
+
+    Result = _ActionResult
+    Feedback = _ActionFeedback
+
+
+class Say:
+    @dataclass
+    class Goal:
+        text: str = ""
+        tag: str = ""
+        priority: int = 50
+        interruptible: bool = True
+
+    Result = _ActionResult
+    Feedback = _ActionFeedback
+
+
+class Stop:
+    @dataclass
+    class Request:
+        fade_ms: int = 40
+        all: bool = False
+
+    @dataclass
+    class Response:
+        stopped: bool = False
+
+
+class Duck:
+    @dataclass
+    class Request:
+        gain_db: float = -12.0
+        duration_ms: int = 2000
+
+    @dataclass
+    class Response:
+        ok: bool = False
 
 
 # rclpy ---------------------------------------------------------------------------------
@@ -189,6 +258,113 @@ class Node:
         }
         return sorted(names.items())
 
+    def create_service(
+        self, srv_type: Any, srv_name: str, callback: Any, **_: Any
+    ) -> tuple[Any, Any]:
+        GRAPH.services[srv_name] = (srv_type, callback)
+        return (srv_name, callback)
+
+    def destroy_service(self, service: tuple[Any, Any]) -> bool:
+        GRAPH.services.pop(service[0], None)
+        return True
+
+
+class ReentrantCallbackGroup:
+    pass
+
+
+class GoalResponse(enum.Enum):
+    REJECT = 1
+    ACCEPT = 2
+
+
+class CancelResponse(enum.Enum):
+    REJECT = 1
+    ACCEPT = 2
+
+
+class GoalHandle:
+    """What an execute callback sees, plus what the test reads back."""
+
+    def __init__(self, server: ActionServer, request: Any) -> None:
+        self.server, self.request = server, request
+        self.feedback: list[Any] = []
+        self.status = "executing"
+        self.result: Any = None
+        self.done = threading.Event()
+        self._cancel = False
+
+    @property
+    def is_cancel_requested(self) -> bool:
+        return self._cancel
+
+    def publish_feedback(self, feedback: Any) -> None:
+        assert isinstance(feedback, self.server.action_type.Feedback)
+        self.feedback.append(feedback)
+
+    def succeed(self) -> None:
+        self.status = "succeeded"
+
+    def abort(self) -> None:
+        self.status = "aborted"
+
+    def canceled(self) -> None:
+        assert self._cancel, "canceled() without a cancel request"
+        self.status = "canceled"
+
+    def cancel(self) -> bool:
+        """The client's cancel request."""
+        if self.server.cancel_callback(self) is CancelResponse.ACCEPT:
+            self._cancel = True
+        return self._cancel
+
+
+class ActionServer:
+    def __init__(
+        self,
+        node: Node,
+        action_type: Any,
+        action_name: str,
+        execute_callback: Any,
+        *,
+        callback_group: Any = None,
+        goal_callback: Any = None,
+        cancel_callback: Any = None,
+        **_: Any,
+    ) -> None:
+        self.action_type, self.name = action_type, action_name
+        self.execute_callback = execute_callback
+        self.callback_group = callback_group
+        self.goal_callback = goal_callback or (lambda _g: GoalResponse.ACCEPT)
+        self.cancel_callback = cancel_callback or (lambda _h: CancelResponse.REJECT)
+        GRAPH.actions[action_name] = self
+
+    def destroy(self) -> None:
+        GRAPH.actions.pop(self.name, None)
+
+
+def send_goal(name: str, goal: Any) -> GoalHandle | None:
+    """Send a goal to the server ``name``; None if it was rejected."""
+    server = GRAPH.actions[name]
+    if server.goal_callback(goal) is not GoalResponse.ACCEPT:
+        return None
+    handle = GoalHandle(server, goal)
+
+    def run() -> None:
+        handle.result = server.execute_callback(handle)
+        assert isinstance(handle.result, server.action_type.Result)
+        if handle.status == "executing":  # rclpy aborts a goal left without a state
+            handle.status = "aborted"
+        handle.done.set()
+
+    threading.Thread(target=run, daemon=True).start()
+    return handle
+
+
+def call_service(name: str, request: Any) -> Any:
+    srv_type, callback = GRAPH.services[name]
+    return callback(request, srv_type.Response())
+
 
 def create_node(
     node_name: str, *, context: Context | None = None, namespace: str | None = None, **_: Any
@@ -220,7 +396,16 @@ class SingleThreadedExecutor:
         return True
 
 
-def install(monkeypatch: Any) -> Graph:
+class MultiThreadedExecutor(SingleThreadedExecutor):
+    """Subscriptions run in order on one thread (the default, mutually exclusive group);
+    goals get their own threads from :func:`send_goal`."""
+
+    def __init__(self, num_threads: int | None = None, *, context: Context | None = None) -> None:
+        super().__init__(context=context)
+        self.num_threads = num_threads
+
+
+def install(monkeypatch: Any, interfaces: bool = True) -> Graph:
     """Put the fake modules in ``sys.modules`` for one test; returns a fresh graph."""
     global GRAPH
     GRAPH = Graph()
@@ -241,7 +426,26 @@ def install(monkeypatch: Any) -> Graph:
         ReliabilityPolicy=ReliabilityPolicy,
         DurabilityPolicy=DurabilityPolicy,
     )
-    rclpy.executors = module("rclpy.executors", SingleThreadedExecutor=SingleThreadedExecutor)  # type: ignore[attr-defined]
+    rclpy.executors = module(  # type: ignore[attr-defined]
+        "rclpy.executors",
+        SingleThreadedExecutor=SingleThreadedExecutor,
+        MultiThreadedExecutor=MultiThreadedExecutor,
+    )
+    rclpy.callback_groups = module(  # type: ignore[attr-defined]
+        "rclpy.callback_groups", ReentrantCallbackGroup=ReentrantCallbackGroup
+    )
+    rclpy.action = module(  # type: ignore[attr-defined]
+        "rclpy.action",
+        ActionServer=ActionServer,
+        GoalResponse=GoalResponse,
+        CancelResponse=CancelResponse,
+    )
+    if interfaces:
+        module("ral_interfaces")
+        module("ral_interfaces.action", PlayAudio=PlayAudio, Say=Say)
+        module("ral_interfaces.srv", Stop=Stop, Duck=Duck)
+    else:
+        monkeypatch.setitem(sys.modules, "ral_interfaces", None)
     module("audio_common_msgs")
     module(
         "audio_common_msgs.msg",

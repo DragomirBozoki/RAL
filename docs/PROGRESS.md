@@ -15,8 +15,8 @@ Events. Partner-validated profiles need partners and stay with the maintainer.
 | 3 | Health monitor | done |
 | 4 | Prometheus and OpenTelemetry export | done |
 | 5 | Local Studio UI | done |
-| 6 | ROS 2 actions and services | next |
-| 7 | Engine process split: measure, then decide | |
+| 6 | ROS 2 actions and services | done (ROS 2 run pending) |
+| 7 | Engine process split: measure, then decide | next |
 | 8 | Partner-validated profiles | maintainer |
 
 ### M3 done
@@ -49,6 +49,27 @@ Events. Partner-validated profiles need partners and stay with the maintainer.
   channel-map editor that returns the profile as YAML. The page was not opened in a browser
   in this environment (no browser, no Node to check the script); the maintainer checks it by
   hand.
+- **Step 6.** `integrations/ros2/ral_interfaces` (ament_cmake, rosidl: `PlayAudio` and `Say`
+  actions, `Stop` and `Duck` services) and `ral.ros2.actions.Ros2Actions`, served by the
+  ROS 2 bridge when the package is sourced (`actions: auto`, `true` or `false`). The runtime
+  now spins a `MultiThreadedExecutor` (4 threads); actions and services use a reentrant
+  callback group, so a goal waiting for its audio does not block topics or the `stop`
+  service. Cancel fades the goal out. `Say` needs a TextToSpeech callable given to
+  `Ros2Bridge(tts=...)` and rejects goals without one (TODO(M4): the TextToSpeech port).
+  Tested against the extended fake rclpy; not yet run on ROS 2:
+
+  ```bash
+  mkdir -p ~/ral_ws/src && cp -r integrations/ros2/ral_interfaces ~/ral_ws/src/
+  cd ~/ral_ws && source /opt/ros/humble/setup.bash && colcon build --packages-select ral_interfaces
+  source install/setup.bash && cd ~/RAL
+  uv run ral run --profile laptop -b ros2 &
+  ros2 action list                     # /ral/play_audio, /ral/say
+  ros2 service call /ral/duck ral_interfaces/srv/Duck "{gain_db: -20.0, duration_ms: 1000}"
+  ros2 service call /ral/stop ral_interfaces/srv/Stop "{fade_ms: 40}"
+  ```
+
+  Expected: both actions listed; `Duck` answers `ok: true`; `Stop` answers
+  `stopped: false` while nothing plays.
 
 ### M3 decisions
 

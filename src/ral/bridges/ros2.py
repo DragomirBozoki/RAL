@@ -11,8 +11,10 @@ Under ``namespace`` (default ``/ral``):
 - ``control`` (``std_msgs/String`` in): ``{"type": "interrupt" | "stop" | "duck" | "end"}``
   as in the WebSocket protocol.
 
-TODO(M3): ``Say`` and ``PlayAudio`` actions and ``stop``/``duck`` services need an
-interface package built with colcon; until then the topics above carry the same requests.
+With ``ral_interfaces`` (``integrations/ros2``, built with colcon) sourced, also the
+``play_audio`` and ``say`` actions and the ``stop`` and ``duck`` services
+(:mod:`ral.ros2.actions`). ``actions: auto`` (default) serves them when the package is
+found, ``true`` requires it, ``false`` serves topics only.
 """
 
 from __future__ import annotations
@@ -20,22 +22,26 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import json
+import logging
 from collections.abc import Mapping
 from typing import TYPE_CHECKING, Any
 
 from ral.core.clock import now_ns
 from ral.core.convert import float32_to_int16
-from ral.core.errors import ConfigError
+from ral.core.errors import ConfigError, MissingDependencyError
 from ral.core.events import event_to_json
 from ral.core.protocols import PlaybackHandle
 from ral.playback.stream import PcmStream
 from ral.ros2 import Ros2Runtime, RosClockMapper, import_msgs, qos_profile
+from ral.ros2.actions import Ros2Actions, TextToSpeechFn
 from ral.ros2.decoders import AudioCommonDecoder, info_message, stamped_message
 
 if TYPE_CHECKING:
     from ral.engine.engine import Engine
 
 __all__ = ["Ros2Bridge"]
+
+log = logging.getLogger(__name__)
 
 
 class Ros2Bridge:
@@ -45,11 +51,24 @@ class Ros2Bridge:
         namespace: Topic prefix.
         gap_ms: Silence on ``play`` that ends an item.
         runtime: An existing ROS 2 runtime to share (a new one by default).
+        actions: Serve the actions and services: "auto", True or False.
+        tts: Speaks ``Say`` goals (rejected without one).
     """
 
     def __init__(
-        self, namespace: str = "/ral", gap_ms: int = 300, runtime: Ros2Runtime | None = None
+        self,
+        namespace: str = "/ral",
+        gap_ms: int = 300,
+        runtime: Ros2Runtime | None = None,
+        *,
+        actions: bool | str = "auto",
+        tts: TextToSpeechFn | None = None,
     ) -> None:
+        if actions not in ("auto", True, False):
+            raise ConfigError("bridges.ros2.actions must be auto, true or false.")
+        self.actions_mode = actions
+        self.tts = tts
+        self.actions: Ros2Actions | None = None
         self.ns = "/" + namespace.strip("/") if namespace.strip("/") else ""
         self.gap_ns = gap_ms * 1_000_000
         self._runtime = runtime
@@ -67,10 +86,14 @@ class Ros2Bridge:
 
     @classmethod
     def from_config(cls, cfg: Mapping[str, Any]) -> Ros2Bridge:
-        unknown = set(cfg) - {"namespace", "gap_ms"}
+        unknown = set(cfg) - {"namespace", "gap_ms", "actions"}
         if unknown:
             raise ConfigError(f"bridges.ros2 has unknown keys {sorted(unknown)}.")
-        return cls(str(cfg.get("namespace", "/ral")), int(cfg.get("gap_ms", 300)))
+        return cls(
+            str(cfg.get("namespace", "/ral")),
+            int(cfg.get("gap_ms", 300)),
+            actions=cfg.get("actions", "auto"),
+        )
 
     def topic(self, name: str) -> str:
         return f"{self.ns}/{name}"
@@ -106,6 +129,13 @@ class Ros2Bridge:
                 std.String, self.topic("control"), self._on_control, qos_profile(depth=50)
             ),
         ]
+        if self.actions_mode is not False:
+            try:
+                self.actions = Ros2Actions(self._runtime, engine, self._loop, self.ns, self.tts)
+            except MissingDependencyError:
+                if self.actions_mode is True:
+                    raise
+                log.info("ral_interfaces not found; serving ROS 2 topics without actions.")
         self._tasks = [
             asyncio.create_task(self._publish_clean(engine.subscribe(200))),
             asyncio.create_task(self._publish_events(engine.bus.subscribe())),
@@ -121,6 +151,9 @@ class Ros2Bridge:
         self._tasks = []
         if self._stream is not None:
             self._stream.end()
+        if self.actions is not None:
+            self.actions.close()
+            self.actions = None
         if self._runtime is not None:
             node = self._runtime.node
             for sub in self._subs:

@@ -5,9 +5,13 @@ here and only when a ROS 2 feature is used (CLAUDE.md, rule 6). API checked agai
 rclpy sources of the ``humble`` branch (``node.py``, ``qos.py``, ``executors.py``):
 https://github.com/ros2/rclpy/tree/humble/rclpy/rclpy
 
-:class:`Ros2Runtime` owns one rclpy ``Context``, one node and one executor thread, so RAL
-never touches an application's default context. Subscription callbacks run on that
-executor thread; they must only copy data (CLAUDE.md, rule 4).
+:class:`Ros2Runtime` owns one rclpy ``Context``, one node and one ``MultiThreadedExecutor``
+spinning on a thread of its own, so RAL never touches an application's default context.
+Subscription callbacks stay in the node's default (mutually exclusive) callback group and
+must only copy data (CLAUDE.md, rule 4). Action and service callbacks go into
+:attr:`Ros2Runtime.reentrant`: an action's execute callback waits until its audio has
+played, and the other workers keep serving topics, cancels and the ``stop`` service
+meanwhile (``executors.py`` and ``callback_groups.py`` of rclpy humble).
 
 Time. Message stamps are ROS time (system time, or simulated time), not the RAL clock.
 :class:`RosClockMapper` measures the offset ``now_ns() - ros_now`` on every message and
@@ -107,19 +111,22 @@ class Ros2Runtime:
     Args:
         node_name: Name of the node in the ROS graph.
         namespace: Node namespace.
+        threads: Executor worker threads (each running action goal holds one).
     """
 
-    def __init__(self, node_name: str = "ral", namespace: str = "") -> None:
+    def __init__(self, node_name: str = "ral", namespace: str = "", threads: int = 4) -> None:
         self.rclpy = import_rclpy()
+        from rclpy.callback_groups import ReentrantCallbackGroup
         from rclpy.context import Context
-        from rclpy.executors import SingleThreadedExecutor
+        from rclpy.executors import MultiThreadedExecutor
 
         self.context = Context()
         self.rclpy.init(context=self.context)
         self.node = self.rclpy.create_node(
             node_name, namespace=namespace or None, context=self.context
         )
-        self.executor = SingleThreadedExecutor(context=self.context)
+        self.executor = MultiThreadedExecutor(threads, context=self.context)
+        self.reentrant = ReentrantCallbackGroup()
         self.executor.add_node(self.node)
         self._thread = threading.Thread(target=self._spin, name="ral-ros2", daemon=True)
         self._thread.start()
