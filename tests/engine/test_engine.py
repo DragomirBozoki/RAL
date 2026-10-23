@@ -93,6 +93,11 @@ async def test_realtime_run_paces_and_stops_cleanly(tmp_path: Path) -> None:
         elapsed = loop.time() - t0
     assert 0.35 < elapsed < 1.5  # 50 frames of 10 ms, paced by the clock
     assert engine.worker_error is None
+    assert len(engine.dsp_late_ms) >= 50  # live frames are timed on the DSP thread
+    assert engine.health is not None
+    late = engine.health.snapshot()["dsp_late_p99_ms"]
+    assert late is not None
+    assert 0 <= late < 1000
 
 
 async def test_barge_in_interrupts_playback(tmp_path: Path) -> None:

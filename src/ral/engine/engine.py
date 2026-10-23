@@ -21,9 +21,12 @@ import logging
 import queue
 import threading
 import uuid
+from collections import deque
 from collections.abc import AsyncIterator
 from pathlib import Path
 from typing import Any
+
+import numpy as np
 
 from ral.core.bus import EventBus
 from ral.core.clock import now_ns
@@ -142,6 +145,10 @@ class Engine:
         """Set when the source ended (a file ran out) and every frame was processed."""
         self.input_overruns = 0
         """Native frames dropped because the DSP worker fell behind."""
+        self.dsp_late_ms: deque[float] = deque(maxlen=500)
+        """How late the DSP worker finished each of the last 5 s of live frames (from the
+        end of the frame's capture). Python work elsewhere in the process can starve the
+        worker through the GIL (``spikes/dsp_gil_load.py``); this makes it visible."""
         self.worker_error: BaseException | None = None
 
     # Lifecycle
@@ -506,6 +513,11 @@ class Engine:
             "echo_delay_ms": delay,
             "lead_ms": float(self.lead.ms) if hasattr(self, "lead") else None,
             "dsp_us_per_frame": self.graph.us_per_frame if self.graph else None,
+            "dsp_late_p99_ms": (
+                float(np.percentile(np.array(self.dsp_late_ms), 99))
+                if len(self.dsp_late_ms) >= 50
+                else None
+            ),
             "turn_latency_median_ms": stats.get("total"),
         }
 
@@ -546,11 +558,16 @@ class Engine:
         assert graph is not None
         assert self._loop is not None
         loop = self._loop
+        live = self._realtime(self.profile.capture)  # file replays have no real capture time
+        late = self.dsp_late_ms
         try:
             while True:
                 frame = self._in_q.get()
                 results = graph.flush() if frame is None else graph.process(frame)
                 for result in results:
+                    if live:
+                        raw = result.raw
+                        late.append((now_ns() - raw.t_ns - raw.fmt.frame_ns) / 1e6)
                     loop.call_soon_threadsafe(self._deliver, result)
                 if frame is None:
                     loop.call_soon_threadsafe(self.capture_done.set)

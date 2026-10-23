@@ -65,6 +65,12 @@ _GAUGES = (
     ),
     ("lead_ms", "ral_lead_ms", "Reference lead given to echo control.", "ms"),
     ("dsp_us_per_frame", "ral_dsp_us_per_frame", "Average DSP cost per 10 ms frame.", "us"),
+    (
+        "dsp_late_p99_ms",
+        "ral_dsp_late_p99_ms",
+        "99th percentile of how late the DSP thread finished live frames over 5 s.",
+        "ms",
+    ),
 )
 
 

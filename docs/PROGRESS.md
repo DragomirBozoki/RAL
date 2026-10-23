@@ -16,7 +16,7 @@ Events. Partner-validated profiles need partners and stay with the maintainer.
 | 4 | Prometheus and OpenTelemetry export | done |
 | 5 | Local Studio UI | done |
 | 6 | ROS 2 actions and services | done (ROS 2 run pending) |
-| 7 | Engine process split: measure, then decide | next |
+| 7 | Engine process split: measure, then decide | done: own process via `ral run` and bridges |
 | 8 | Partner-validated profiles | maintainer |
 
 ### M3 done
@@ -70,6 +70,15 @@ Events. Partner-validated profiles need partners and stay with the maintainer.
 
   Expected: both actions listed; `Duck` answers `ok: true`; `Stop` answers
   `stopped: false` while nothing plays.
+- **Step 7.** `spikes/dsp_gil_load.py`: a device-like thread and the real capture chain,
+  alone and next to pure-Python threads. Alone: frames done 1.2 ms after they end (p99
+  4.3 ms). With one busy Python thread: device thread 30 ms late at p99, DSP thread in time
+  for only 11 % of frames. Decision: RAL runs as its own process and agents connect through
+  bridges (DESIGN 9, "Process model"); no DSP child process inside the `Engine` API for now
+  (TODO(M4)). New: `Engine.dsp_late_ms` and the `dsp_late_p99_ms` health metric (exported
+  as `ral_dsp_late_p99_ms`). Found on the way: the realtime file backend spun the event loop
+  on Windows (timers fire up to 15.6 ms early), which itself starved the DSP thread; it now
+  sleeps at least one clock step.
 
 ### M3 decisions
 

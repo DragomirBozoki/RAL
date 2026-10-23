@@ -552,6 +552,10 @@ Python with native DSP libraries is fast enough for speech at 16 kHz and 10 ms f
 | Tooling | `uv`, hatchling, ruff, mypy, pytest with pytest-asyncio, pre-commit, pip-licenses | Fast, standard |
 | CI | GitHub Actions on Linux x86_64 (`ubuntu-latest`), Linux arm64 (`ubuntu-24.04-arm`) and Windows (core tests) | Catches platform issues early |
 
+### Process model
+
+RAL runs in a process of its own: `ral run`, or the `ral_ros` node. Agents, TTS clients and robot code connect through the bridges (WebSocket, LiveKit, ROS 2, Pipecat over WebSocket). Measured in M3 (`spikes/dsp_gil_load.py`): alone, the capture chain finishes a frame 1.2 ms after it ends (4.3 ms at p99), but one thread of pure Python in the same process makes a device-callback-like thread wake 30 ms late and leaves the DSP thread finishing only 11 % of frames in time, because every numpy and AEC3 call releases the GIL and getting it back costs up to a switch interval (5 ms). Embedding `Engine` in an application is for light control code; `Engine.dsp_late_ms` and the `dsp_late_p99_ms` health metric (also exported) show when it is starved. A DSP child process behind the `Engine` API (shared-memory rings both ways) is deferred until someone needs the in-process API under load.
+
 ### Packaging
 
 | Extra | Packages | Needed for |
