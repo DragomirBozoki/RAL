@@ -1,6 +1,42 @@
 # Progress
 
-## Current milestone: M2, robots and measurement (v0.2): code complete, hardware and ROS 2 checks pending
+## Current milestone: M3, field readiness (v0.3)
+
+See `docs/DESIGN.md` section 10. Started 2026-10-23 on "finish everything": all steps in
+a row with commit, push and CI after each. No new dependencies: Prometheus is a text format
+over HTTP, the OpenTelemetry exporter speaks OTLP/HTTP JSON with the stdlib (opt-in; it
+sends nothing unless configured), the Studio is an asyncio HTTP server with Server-Sent
+Events. Partner-validated profiles need partners and stay with the maintainer.
+
+| Step | What | Status |
+|---|---|---|
+| 1 | Drift compensation | done |
+| 2 | Online delay tracking (GCC-PHAT) | next |
+| 3 | Health monitor | |
+| 4 | Prometheus and OpenTelemetry export | |
+| 5 | Local Studio UI | |
+| 6 | ROS 2 actions and services | |
+| 7 | Engine process split: measure, then decide | |
+| 8 | Partner-validated profiles | maintainer |
+
+### M3 done
+
+- **Step 1.** `ral.dsp.drift` (`DriftEstimator`: least-squares sample rate on the RAL clock
+  through millisecond jitter; `DriftCorrector`: windowed-sinc resampler with a slowly
+  varying ratio, -92 dB, 66 us per frame). `ReferenceBuffer(drift=True)` moves the reference
+  onto the mic clock (start value `echo.drift_ppm`, then measured), `echo.drift_compensation`
+  (default on in `software_ref`), `Engine.drift_ppm`. The Framer follows a measured
+  `rate_source`, closing the M1 TODO about re-anchoring steps. `ral.bench.drift` and
+  `spikes/drift_erle.py`: with the speaker 500 ppm fast, ERLE over the last 20 s of a
+  minute is 31.5 dB without compensation and 43.0 dB with it.
+
+### M3 decisions
+
+- 2026-10-23 (step 1): drift correction is a second stage after the fixed polyphase
+  resampler, not `samplerate`: no CPython 3.10 aarch64 wheel (M1 step 1) and the
+  in-house stage reaches -92 dB. The correction ratio moves at most 5 ppm per frame.
+
+## M2, robots and measurement (v0.2): code complete, hardware and ROS 2 checks pending
 
 See `docs/DESIGN.md` section 10. Approved 2026-10-21: all steps in a row with commit, push
 and CI after each; Pipecat as a separate package under `integrations/pipecat` (it needs
@@ -116,20 +152,6 @@ shell `ros2 topic echo /ral/events` should show the same events.
 4. Ubuntu with ROS 2: the commands under step 7.
 5. Pipecat: `cd integrations/pipecat && uv sync --python 3.12 --extra dev`, run RAL with
    `--bridge websocket` and a Pipecat bot with `RalTransport`.
-
-## Next: proposed M3 (field readiness, v0.3), not started
-
-DESIGN section 10 plus what M2 left open:
-
-1. Drift compensation: a slowly varying resampling ratio for the reference (the
-   resampler from M1 step 1 gets a variable ratio, or `samplerate` where wheels exist).
-2. Online delay tracking (GCC-PHAT) feeding the reference lead.
-3. Health monitor: xruns, clipping, dead channels, noise-floor drift, `DeviceLost`.
-4. OpenTelemetry and Prometheus export of latency, echo and health metrics.
-5. Local Studio UI: meters, spectrogram, channel-map editor, echo-mode switch.
-6. ROS 2 interface package: `Say` and `PlayAudio` actions, `stop` and `duck` services.
-7. Engine in its own process if profiling shows the GIL starving the DSP thread.
-8. Partner-validated robot profiles (needs partners).
 
 ### M2 decisions
 

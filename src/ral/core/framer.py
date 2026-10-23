@@ -20,13 +20,14 @@ observed time jumps forward by a frame or more while the sample count did not (t
 driver lost audio before RAL saw it), ``seq`` skips the same number of frames. Either
 way, a hole in ``seq`` means missing audio and ``seq`` stays in step with ``t_ns``.
 
-TODO(M1): replace threshold re-anchoring with a delay-locked loop that tracks clock
-drift smoothly; with about 50 ppm of drift the timeline now steps by the threshold every
-40 s or so.
+Clock drift: with ``rate_source`` set (the engine and the reference buffer attach a
+:class:`~ral.dsp.drift.DriftEstimator`), the timeline advances at the stream's measured
+rate, so ppm-level drift no longer accumulates into re-anchoring steps.
 """
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from typing import Any
 
 import numpy as np
@@ -109,6 +110,12 @@ class Framer:
         """Frames skipped in ``seq`` because of those gaps."""
         self.reanchors = 0
         """Times the timeline moved to the observed time."""
+        self.rate_source: Callable[[], float | None] | None = None
+        """Measured sample rate (e.g. ``DriftEstimator.rate_hz``); nominal until it answers."""
+        self._rate: float | None = None
+        self.observer: Callable[[int, int], None] | None = None
+        """Called on the consumer side with ``(sample_index, observed_t_ns)`` for each
+        timestamp observation, before smoothing (drift estimation uses them)."""
 
     def push(self, samples: npt.NDArray[Any], t_ns: int) -> bool:
         """Producer side: append a block whose first sample was captured at ``t_ns``."""
@@ -140,15 +147,33 @@ class Framer:
         assert self._base_index is not None
 
         index = start + self._offset
+        self._follow_rate(index)
         t_ns = self._base_t + self._ns(index - self._base_index)
         return AudioFrame(out, self.fmt, self.channel_map, t_ns, index // fsamples, self.clock_id)
 
     def _ns(self, samples: int) -> int:
-        return samples * 1_000_000_000 // self.fmt.sample_rate
+        if self._rate is None:  # nominal rate: exact integer arithmetic
+            return samples * 1_000_000_000 // self.fmt.sample_rate
+        return round(samples * 1e9 / self._rate)
+
+    def _follow_rate(self, index: int) -> None:
+        # Use the stream's measured rate once known, so t_ns follows the real clock instead
+        # of drifting and re-anchoring in steps. Rebase at this frame first, so a change of
+        # rate never makes the timeline jump.
+        if self.rate_source is None or self._base_index is None:
+            return
+        rate = self.rate_source()
+        if rate is None or (self._rate is not None and abs(rate - self._rate) < 1e-3):
+            return
+        self._base_t += self._ns(index - self._base_index)
+        self._base_index = index
+        self._rate = rate
 
     def _observe(self, start: int, anchor: Anchor) -> None:
         """Compare the anchor's view of this frame's start time with the timeline."""
         observed = anchor.t_ns + self._ns(start - anchor.sample_index)
+        if self.observer is not None:
+            self.observer(start, observed)
         index = start + self._offset
         if self._base_index is None:
             self._base_index, self._base_t = index, observed

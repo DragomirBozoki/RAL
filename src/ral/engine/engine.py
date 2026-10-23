@@ -31,6 +31,7 @@ from ral.core.errors import ConfigError
 from ral.core.events import BargeIn, Event, RecordingStarted, RecordingStopped
 from ral.core.protocols import AudioSink, AudioSource
 from ral.core.types import AudioFormat, AudioFrame, ChannelMap, ChannelRole
+from ral.dsp.drift import DriftEstimator
 from ral.engine.capture import CaptureGraph, CaptureResult
 from ral.engine.stages import build_stages
 from ral.metrics.latency import LatencyTracker
@@ -124,6 +125,7 @@ class Engine:
         self._remove_listener: Any = None
         self._remove_latency: Any = None
         self._ros2: Any = None
+        self.capture_estimator: DriftEstimator | None = None
         self.latency = LatencyTracker()
         """Per-turn latency; replaced with a publishing tracker on start."""
         self.capture_done = asyncio.Event()
@@ -155,7 +157,12 @@ class Engine:
 
         sink = self._open_sink(p.playback)
         self.sink = sink
-        self.reference = ReferenceBuffer(sink.fmt, self.engine_fmt.sample_rate)
+        self.reference = ReferenceBuffer(
+            sink.fmt,
+            self.engine_fmt.sample_rate,
+            drift=p.echo.mode == "software_ref" and p.echo.drift_compensation,
+            initial_ppm=p.echo.drift_ppm,
+        )
         sink.on_rendered(self.reference.push)
         writer = SinkWriter(sink, self.engine_fmt, realtime=self._realtime(p.playback))
         self.playback = PlaybackQueue(writer, self.bus, self.session_id)
@@ -164,6 +171,13 @@ class Engine:
         self.source = source
         if p.echo.mode == "hardware":
             self._check_hardware(source)
+        framer = getattr(source, "framer", None)
+        if framer is not None:
+            # The capture clock's real rate, for drift compensation and health metrics.
+            self.capture_estimator = DriftEstimator(source.fmt.sample_rate)
+            framer.observer = self.capture_estimator.observe
+            framer.rate_source = self.capture_estimator.rate_hz
+            self.reference.capture_estimator = self.capture_estimator
         playback = self.playback
         stages = build_stages(
             p, current_tag=lambda: playback.current.tag if playback.current else None
@@ -246,6 +260,11 @@ class Engine:
 
     async def __aexit__(self, *exc: object) -> None:
         await self.stop()
+
+    @property
+    def drift_ppm(self) -> float | None:
+        """Sink clock minus capture clock in ppm, once measured (or the profile's value)."""
+        return None if self.reference is None else self.reference.drift_ppm
 
     def subscribe(self, maxsize: int = 200) -> ResultSubscription:
         """Receive every processed frame (raw, clean and its context)."""

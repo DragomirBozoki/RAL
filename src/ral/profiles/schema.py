@@ -120,6 +120,10 @@ class EchoConfig(_Strict):
     mic_delay_ms: int = Field(default=0, ge=0, le=50)
     """``loopback``: delay the mic so the reference stays ahead of its echo."""
     drift_ppm: float = 0.0
+    """Sink clock minus mic clock, in ppm (from ``ral probe``): the start value of drift
+    compensation until RAL has measured it."""
+    drift_compensation: bool = True
+    """``software_ref``: resample the reference onto the mic clock (DESIGN 5)."""
 
     _mode_off = field_validator("mode", mode="before")(classmethod(lambda cls, v: _off(v)))
 
