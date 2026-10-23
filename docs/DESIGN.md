@@ -548,7 +548,7 @@ Python with native DSP libraries is fast enough for speech at 16 kHz and 10 ms f
 | Recording | `mcap` | Opens in Foxglove and the rosbag2 tooling |
 | Config | pydantic models loaded from YAML (PyYAML) | Validation with clear errors |
 | CLI and API | Typer and rich for the CLI; FastAPI for REST and WebSocket; `grpcio` for gRPC | Small, well-known libraries |
-| Local UI | A small web page served by the daemon: live meters, spectrogram, channel-map editor, echo-mode switch | Tuning without editing YAML |
+| Local UI | A small web page served by the daemon: live meters, spectrogram, channel-map editor, echo-mode switch. M3: the `studio` bridge (`ral.studio`, stdlib asyncio HTTP with Server-Sent Events, one static page, no build step) on 127.0.0.1:8770; meters and a 128-band spectrum every 100 ms, bus events, health; the echo mode switches live (`Engine.set_echo_mode` swaps the stages between frames); the channel map editor returns the profile as YAML to save, since capture opens with its map. POSTs need `application/json` and a same-origin `Origin`, so other web pages cannot drive it | Tuning without editing YAML |
 | Tooling | `uv`, hatchling, ruff, mypy, pytest with pytest-asyncio, pre-commit, pip-licenses | Fast, standard |
 | CI | GitHub Actions on Linux x86_64 (`ubuntu-latest`), Linux arm64 (`ubuntu-24.04-arm`) and Windows (core tests) | Catches platform issues early |
 

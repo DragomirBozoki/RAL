@@ -62,6 +62,7 @@ uv run ral doctor                                  # read-only host and device c
 uv run ral models fetch                            # download pinned models (Silero VAD) into the cache
 uv run ral run --profile laptop                    # run the engine; --play clip.wav, --json, --duration
 uv run ral run -b prometheus                       # plus metrics on http://127.0.0.1:9464/metrics (-b otlp: push to a collector)
+uv run ral run -b studio                           # plus the Studio UI on http://127.0.0.1:8770
 uv run ral bench session.mcap -e off -e software_ref  # replay a recording through configs; --demo, --json
 uv run ral probe --out my-robot.yaml                # play sweeps, map channels, write a profile; --simulate, --quiet
 uv run ral profile list                            # profiles by name; show, validate, migrate

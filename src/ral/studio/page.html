@@ -1,0 +1,208 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>RAL Studio</title>
+<style>
+  :root { --bg: #f6f7f9; --panel: #fff; --fg: #1d2330; --muted: #677085; --line: #dde1e8;
+          --accent: #2f6fde; --ok: #1f9d55; --warn: #c27c0e; --bad: #c8372d; }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg: #12151b; --panel: #1b2029; --fg: #e3e7ee; --muted: #8b93a5; --line: #2b313d;
+            --accent: #5b93f0; --ok: #3cc277; --warn: #e0a23a; --bad: #ef5d52; }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--fg);
+         font: 14px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif; }
+  header { display: flex; flex-wrap: wrap; gap: 8px 16px; align-items: baseline;
+           padding: 12px 16px; border-bottom: 1px solid var(--line); }
+  header h1 { font-size: 16px; margin: 0; }
+  header span { color: var(--muted); }
+  #conn.live { color: var(--ok); } #conn.down { color: var(--bad); }
+  main { display: grid; gap: 16px; padding: 16px; grid-template-columns: 1fr; max-width: 1200px; }
+  @media (min-width: 900px) { main { grid-template-columns: 3fr 2fr; } }
+  section { background: var(--panel); border: 1px solid var(--line); border-radius: 8px;
+            padding: 12px 14px; min-width: 0; }
+  h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted);
+       margin: 0 0 10px; }
+  .meter { display: grid; grid-template-columns: 110px 1fr 64px; gap: 8px; align-items: center;
+           margin: 4px 0; font-variant-numeric: tabular-nums; }
+  .bar { height: 12px; background: var(--line); border-radius: 3px; overflow: hidden; }
+  .bar i { display: block; height: 100%; width: 0; background: var(--accent); transition: width .08s; }
+  .bar i.hot { background: var(--bad); }
+  canvas { width: 100%; height: 180px; display: block; border-radius: 4px; background: #000; }
+  .modes { display: flex; flex-wrap: wrap; gap: 6px; }
+  button { font: inherit; padding: 5px 10px; border-radius: 6px; border: 1px solid var(--line);
+           background: var(--bg); color: var(--fg); cursor: pointer; }
+  button.on { background: var(--accent); border-color: var(--accent); color: #fff; }
+  select { font: inherit; padding: 3px; background: var(--bg); color: var(--fg);
+           border: 1px solid var(--line); border-radius: 4px; }
+  textarea { width: 100%; height: 160px; font: 12px ui-monospace, monospace; background: var(--bg);
+             color: var(--fg); border: 1px solid var(--line); border-radius: 4px; }
+  .row { display: flex; gap: 8px; align-items: center; margin: 4px 0; }
+  .muted { color: var(--muted); } .err { color: var(--bad); }
+  dl { display: grid; grid-template-columns: auto 1fr; gap: 2px 12px; margin: 0;
+       font-variant-numeric: tabular-nums; }
+  dt { color: var(--muted); }
+  #log { height: 220px; overflow: auto; font: 12px ui-monospace, monospace; margin: 0; }
+  #speaking.on { color: var(--warn); font-weight: 600; }
+</style>
+</head>
+<body>
+<header>
+  <h1>RAL Studio</h1>
+  <span id="session"></span>
+  <span id="conn">connecting</span>
+  <span id="speaking">robot silent</span>
+</header>
+<main>
+  <div style="display:grid; gap:16px; min-width:0">
+    <section>
+      <h2>Levels (dBFS)</h2>
+      <div id="meters"></div>
+    </section>
+    <section>
+      <h2>Clean stream spectrogram</h2>
+      <canvas id="spec" width="600" height="128"></canvas>
+      <div class="muted" id="specinfo"></div>
+    </section>
+    <section>
+      <h2>Events</h2>
+      <pre id="log"></pre>
+    </section>
+  </div>
+  <div style="display:grid; gap:16px; align-content:start; min-width:0">
+    <section>
+      <h2>Echo mode</h2>
+      <div class="modes" id="modes"></div>
+      <p class="muted" id="modemsg">Switches live; a new canceller needs a few seconds to converge.</p>
+    </section>
+    <section>
+      <h2>Channel map</h2>
+      <div id="channels"></div>
+      <div class="row"><button id="genyaml">Profile with this map</button></div>
+      <p class="muted">Capture opens with its map, so save the YAML as a profile and restart.</p>
+      <p class="err" id="chanerr"></p>
+      <textarea id="yaml" readonly hidden></textarea>
+    </section>
+    <section>
+      <h2>Health</h2>
+      <dl id="health"></dl>
+    </section>
+  </div>
+</main>
+<script>
+"use strict";
+const $ = (id) => document.getElementById(id);
+const ROLES = ["mic", "reference", "processed", "unused"];
+let state = null;
+
+function pct(db) { return Math.max(0, Math.min(100, (db + 90) / 90 * 100)); }
+
+function meter(label, db) {
+  const hot = db > -3 ? " hot" : "";
+  const text = db <= -100 ? "-inf" : db.toFixed(1);
+  return `<div class="meter"><span>${label}</span><div class="bar"><i class="${hot}"
+    style="width:${pct(db)}%"></i></div><span>${text}</span></div>`;
+}
+
+function drawMeters(m) {
+  let html = m.raw_db.map((db, i) => meter(`ch${i} ${m.roles[i] || ""}`, db)).join("");
+  html += meter("clean", m.clean_db);
+  if (m.ref_db !== null) html += meter("reference", m.ref_db);
+  $("meters").innerHTML = html;
+  $("speaking").textContent = m.speaking ? "robot speaking" : "robot silent";
+  $("speaking").className = m.speaking ? "on" : "";
+}
+
+const spec = $("spec"), ctx = spec.getContext("2d");
+function colour(db) {  // -100..-20 dB to a dark blue to yellow ramp
+  const x = Math.max(0, Math.min(1, (db + 100) / 80));
+  return `rgb(${Math.round(255 * Math.min(1, x * 1.6))},${Math.round(220 * x)},${Math.round(120 * (1 - x) + 40)})`;
+}
+function drawSpectrum(m) {
+  const w = spec.width, h = spec.height, bands = m.spectrum.length;
+  ctx.drawImage(spec, -2, 0);  // scroll left
+  for (let b = 0; b < bands; b++) {
+    ctx.fillStyle = colour(m.spectrum[b]);
+    ctx.fillRect(w - 2, h - (b + 1) * h / bands, 2, h / bands + 1);
+  }
+  $("specinfo").textContent = `0 to ${m.rate / 2} Hz, 100 ms per column`;
+}
+
+function renderModes() {
+  $("modes").innerHTML = state.echo_modes.map((m) =>
+    `<button data-mode="${m}" class="${m === state.echo_mode ? "on" : ""}">${m}</button>`).join("");
+}
+
+function renderChannels() {
+  $("channels").innerHTML = state.capture.roles.map((r, i) =>
+    `<div class="row"><span style="width:40px">ch${i}</span><select data-ch="${i}">` +
+    ROLES.map((o) => `<option${o === r ? " selected" : ""}>${o}</option>`).join("") +
+    `</select></div>`).join("");
+}
+
+function renderHealth(h) {
+  const rows = Object.entries(h || {}).map(([k, v]) => {
+    if (v === null || v === undefined) v = "–";
+    else if (typeof v === "number") v = Number.isInteger(v) ? v : v.toFixed(1);
+    else if (Array.isArray(v)) v = v.map((x) => (x === null ? "–" : typeof x === "number" ? x.toFixed(1) : x)).join(", ") || "none";
+    else if (typeof v === "object") v = Object.entries(v).map(([a, b]) => `${a} ${b}`).join(", ") || "none";
+    return `<dt>${k.replaceAll("_", " ")}</dt><dd style="margin:0">${v}</dd>`;
+  });
+  $("health").innerHTML = rows.join("");
+}
+
+function applyState(s) {
+  const first = state === null;
+  state = s;
+  $("session").textContent = `${s.robot} · session ${s.session_id} · ${s.capture.format || ""}`;
+  renderModes();
+  if (first) renderChannels();
+  renderHealth(s.health);
+}
+
+function log(e) {
+  const pre = $("log");
+  const { type, t_ns, session_id, ...rest } = e;
+  const extra = Object.entries(rest).filter(([k]) => !k.endsWith("_ns"))
+    .map(([k, v]) => `${k}=${typeof v === "number" ? +v.toFixed(2) : v}`).join(" ");
+  pre.textContent = `${new Date().toLocaleTimeString()} ${type} ${extra}\n` + pre.textContent.slice(0, 20000);
+}
+
+async function post(path, body) {
+  const r = await fetch(path, { method: "POST", headers: { "Content-Type": "application/json" },
+                                body: JSON.stringify(body) });
+  const data = await r.json();
+  if (!r.ok) throw new Error(data.error || r.statusText);
+  return data;
+}
+
+$("modes").addEventListener("click", async (ev) => {
+  const mode = ev.target.dataset && ev.target.dataset.mode;
+  if (!mode) return;
+  try { applyState(await post("/api/echo", { mode })); $("modemsg").className = "muted"; }
+  catch (err) { $("modemsg").textContent = err.message; $("modemsg").className = "err"; }
+});
+
+$("genyaml").addEventListener("click", async () => {
+  const channels = [...document.querySelectorAll("#channels select")].map((s) => s.value);
+  $("chanerr").textContent = "";
+  try {
+    const { yaml } = await post("/api/channels", { channels });
+    $("yaml").value = yaml; $("yaml").hidden = false;
+  } catch (err) { $("chanerr").textContent = err.message; }
+});
+
+const es = new EventSource("/events");
+es.addEventListener("open", () => { $("conn").textContent = "live"; $("conn").className = "live"; });
+es.addEventListener("error", () => { $("conn").textContent = "disconnected"; $("conn").className = "down"; });
+es.addEventListener("state", (ev) => applyState(JSON.parse(ev.data)));
+es.addEventListener("meters", (ev) => { const m = JSON.parse(ev.data); drawMeters(m); drawSpectrum(m); });
+es.addEventListener("event", (ev) => log(JSON.parse(ev.data)));
+setInterval(async () => {
+  try { const r = await fetch("/api/state"); if (r.ok) applyState(await r.json()); } catch (_) {}
+}, 2000);
+</script>
+</body>
+</html>

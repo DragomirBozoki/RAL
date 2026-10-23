@@ -28,7 +28,13 @@ from typing import Any
 from ral.core.bus import EventBus
 from ral.core.clock import now_ns
 from ral.core.errors import ConfigError
-from ral.core.events import BargeIn, Event, RecordingStarted, RecordingStopped
+from ral.core.events import (
+    BargeIn,
+    Event,
+    ProfileReloaded,
+    RecordingStarted,
+    RecordingStopped,
+)
 from ral.core.protocols import AudioSink, AudioSource
 from ral.core.types import AudioFormat, AudioFrame, ChannelMap, ChannelRole
 from ral.dsp.drift import DriftEstimator
@@ -279,6 +285,39 @@ class Engine:
     def drift_ppm(self) -> float | None:
         """Sink clock minus capture clock in ppm, once measured (or the profile's value)."""
         return None if self.reference is None else self.reference.drift_ppm
+
+    def set_echo_mode(self, mode: str) -> None:
+        """Switch echo control while audio keeps running (the Studio's echo-mode switch).
+
+        New stages are built off the DSP thread and swapped in with one attribute
+        assignment, which the worker picks up on its next frame; the new canceller starts
+        unconverged. Drift compensation of the reference is fixed at start, so switching
+        into ``software_ref`` from another mode runs without it until the next start.
+
+        Raises:
+            ConfigError: If the mode is unknown or this capture device cannot use it.
+        """
+        if mode not in ("hardware", "software_ref", "loopback", "gate", "off"):
+            raise ConfigError(
+                f"Unknown echo mode {mode!r}; use hardware, software_ref, loopback, gate or off."
+            )
+        if self.graph is None or self.source is None or self.playback is None:
+            raise ConfigError("The engine is not running; start it before switching echo mode.")
+        if mode == "hardware":
+            self._check_hardware(self.source)
+        profile = self.profile.model_copy(deep=True)
+        profile.echo.mode = mode  # type: ignore[assignment]
+        playback = self.playback
+        self.lead.ms = profile.echo.lead_ms  # the tracker raises it again if needed
+        stages = build_stages(
+            profile,
+            current_tag=lambda: playback.current.tag if playback.current else None,
+            lead=self.lead,
+        )
+        self.graph.stages = stages
+        self.profile.echo.mode = profile.echo.mode  # callers share the profile object
+        self.bus.publish(ProfileReloaded(now_ns(), self.session_id, profile=f"echo.mode={mode}"))
+        log.info("Echo mode switched to %s", mode)
 
     def subscribe(self, maxsize: int = 200) -> ResultSubscription:
         """Receive every processed frame (raw, clean and its context)."""

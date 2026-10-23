@@ -72,12 +72,19 @@ def _otlp(cfg: Mapping[str, Any]) -> Bridge:
     return OtlpExporter.from_config(cfg)
 
 
+def _studio(cfg: Mapping[str, Any]) -> Bridge:
+    from ral.studio.server import StudioBridge
+
+    return StudioBridge.from_config(cfg)
+
+
 _BUILTIN: dict[str, BridgeFactory] = {
     "websocket": _websocket,
     "livekit": _livekit,
     "ros2": _ros2,
     "prometheus": _prometheus,
     "otlp": _otlp,
+    "studio": _studio,
 }
 
 

@@ -14,8 +14,8 @@ Events. Partner-validated profiles need partners and stay with the maintainer.
 | 2 | Online delay tracking (GCC-PHAT) | done |
 | 3 | Health monitor | done |
 | 4 | Prometheus and OpenTelemetry export | done |
-| 5 | Local Studio UI | next |
-| 6 | ROS 2 actions and services | |
+| 5 | Local Studio UI | done |
+| 6 | ROS 2 actions and services | next |
 | 7 | Engine process split: measure, then decide | |
 | 8 | Partner-validated profiles | maintainer |
 
@@ -43,6 +43,12 @@ Events. Partner-validated profiles need partners and stay with the maintainer.
   on 127.0.0.1:9464), `otlp_metrics`, `otlp_turn_trace` and the `otlp` bridge (OTLP/HTTP
   JSON to a collector, default `http://127.0.0.1:4318`, every 10 s, plus one trace per
   turn). Try: `ral run -b prometheus`, then `curl http://127.0.0.1:9464/metrics`.
+- **Step 5.** `ral.studio` (`StudioBridge`, `LiveAnalyser`, `page.html`): `ral run -b studio`
+  serves http://127.0.0.1:8770 with live meters per channel, a scrolling spectrogram of the
+  clean stream, the event log, health, a live echo-mode switch (`Engine.set_echo_mode`) and a
+  channel-map editor that returns the profile as YAML. The page was not opened in a browser
+  in this environment (no browser, no Node to check the script); the maintainer checks it by
+  hand.
 
 ### M3 decisions
 
