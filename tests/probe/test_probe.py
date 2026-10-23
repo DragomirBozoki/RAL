@@ -95,6 +95,26 @@ def test_written_profile_is_valid_and_report_renders(tmp_path: Path) -> None:
     page = write_report(result, tmp_path / "r.html", "probe").read_text(encoding="utf-8")
     assert "<svg" in page
     assert "loopback" in page
+    assert page.count("data:image/png;base64,") == 2
+
+
+def test_spectrogram_png_is_a_valid_image() -> None:
+    import struct
+    import zlib
+
+    from ral.probe.run import spectrogram_png
+
+    h = np.zeros(RATE)
+    h[80] = 1.0
+    png = spectrogram_png(h, RATE)
+    assert png.startswith(b"\x89PNG\r\n\x1a\n")
+    width, height = struct.unpack(">II", png[16:24])
+    assert height == 129  # bins of a 256-point FFT
+    assert width > 100
+    (idat_len,) = struct.unpack(">I", png[33:37])
+    assert png[37:41] == b"IDAT"
+    rows = zlib.decompress(png[41 : 41 + idat_len])
+    assert len(rows) == height * (1 + 3 * width)
 
 
 def test_cli_simulate_writes_profile_and_report(tmp_path: Path) -> None:

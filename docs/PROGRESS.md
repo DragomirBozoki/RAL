@@ -1,6 +1,6 @@
 # Progress
 
-## Current milestone: M3, field readiness (v0.3)
+## Current milestone: M3, field readiness (v0.3): code complete, field checks pending
 
 See `docs/DESIGN.md` section 10. Started 2026-10-23 on "finish everything": all steps in
 a row with commit, push and CI after each. No new dependencies: Prometheus is a text format
@@ -18,6 +18,7 @@ Events. Partner-validated profiles need partners and stay with the maintainer.
 | 6 | ROS 2 actions and services | done (ROS 2 run pending) |
 | 7 | Engine process split: measure, then decide | done: own process via `ral run` and bridges |
 | 8 | Partner-validated profiles | maintainer |
+| - | Leftover M3 TODOs: probe report spectrograms, resampler note | done |
 
 ### M3 done
 
@@ -85,6 +86,53 @@ Events. Partner-validated profiles need partners and stay with the maintainer.
 - 2026-10-23 (step 1): drift correction is a second stage after the fixed polyphase
   resampler, not `samplerate`: no CPython 3.10 aarch64 wheel (M1 step 1) and the
   in-house stage reaches -92 dB. The correction ratio moves at most 5 ppm per frame.
+- 2026-10-23 (step 4): exporters are bridges, so they run only when named; stdlib only
+  (Prometheus text 0.0.4, OTLP/HTTP JSON). Default addresses are local (127.0.0.1:9464,
+  a collector on 127.0.0.1:4318). Turn latency is a cumulative histogram with fixed
+  buckets from 100 ms to 5 s, and each turn is a trace with one span per stage.
+- 2026-10-23 (step 5): the Studio is a bridge with one static page and SSE, no build step
+  and no dependency. The echo mode switches live; the channel map does not (capture opens
+  with its map), so the editor returns YAML instead of writing files. POSTs need JSON and a
+  same-origin `Origin` against cross-site requests.
+- 2026-10-23 (step 6): the ROS 2 runtime spins a `MultiThreadedExecutor` (4 threads):
+  goals block a worker until their audio has played, and the reentrant group keeps `stop`
+  and cancels responsive. `Say` takes a TTS callable until the TextToSpeech port exists.
+- 2026-10-23 (step 7): no DSP child process. RAL runs as its own process and agents connect
+  through bridges; `dsp_late_p99_ms` shows when an embedded engine is starved.
+
+### M3 acceptance (DESIGN section 10)
+
+| Criterion | State |
+|---|---|
+| A 1-hour run with separate capture and playback devices keeps echo control stable | drift and delay tracking proven in simulation (500 ppm: ERLE 43 dB instead of 31.5 dB; a 50 ms DAC error recovered); the hour on real devices is a maintainer task |
+| Health metrics visible in a standard collector | Prometheus endpoint and OTLP exporter tested against the formats; scraping with a real Prometheus or OpenTelemetry Collector is a maintainer task |
+| Two robot profiles validated on real hardware | open: needs partners |
+
+### M3 maintainer tasks
+
+1. **One hour, two devices** (laptop speaker or a USB speaker for playback, a separate USB
+   mic or the XVF3800 for capture; with `echo: {mode: software_ref}`):
+
+   ```bash
+   uv run ral run --profile my-two-devices.yaml -b prometheus -b studio --record --duration 3600
+   curl -s http://127.0.0.1:9464/metrics | grep -E "ral_drift_ppm|ral_echo_delay_ms|ral_dsp_late"
+   uv run ral bench recordings/ral-*.mcap -e off -e software_ref
+   ```
+
+   Play speech through RAL now and then (Studio at http://127.0.0.1:8770 shows levels).
+   Expected: `ral_drift_ppm` settles within a few minutes (tens of ppm for two USB
+   devices), `ral_echo_delay_ms` stays steady, `ral_dsp_late_p99_ms` stays under 20, and
+   the bench shows `software_ref` ERLE above 25 dB in the last 10 minutes as in the first.
+2. **Collector:** `docker run -p 4318:4318 otel/opentelemetry-collector` with a debug
+   exporter, then `uv run ral run --profile laptop -b otlp --duration 60`: the collector
+   log shows `ral.frames`, `ral.turn_latency_ms` and, after a conversation turn, `turn`
+   spans. Or point Prometheus at `127.0.0.1:9464`.
+3. **Studio in a browser:** open it during task 1; check the meters move, the spectrogram
+   scrolls, switching echo mode works and the channel editor returns YAML (the page was
+   not opened in a browser during development).
+4. **ROS 2 actions** on Ubuntu: the commands under step 6.
+5. **Partner profiles** (step 8): `ral probe` on two robots, with the partners' consent to
+   publish the profiles.
 
 ## M2, robots and measurement (v0.2): code complete, hardware and ROS 2 checks pending
 

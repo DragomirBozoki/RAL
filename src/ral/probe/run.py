@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
+import base64
 import html
+import struct
+import zlib
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -16,7 +19,7 @@ from ral.probe.analyze import ProbeResult, analyze
 from ral.probe.io import ProbeIO
 from ral.probe.signals import exp_sweep, inverse_filter
 
-__all__ = ["ProbeSettings", "probe_profile", "run_probe", "write_report"]
+__all__ = ["ProbeSettings", "probe_profile", "run_probe", "spectrogram_png", "write_report"]
 
 
 @dataclass
@@ -143,8 +146,55 @@ def _svg_ir(h: npt.NDArray[np.float64], rate: int, width: int = 560, height: int
     )
 
 
+def spectrogram_png(
+    h: npt.NDArray[np.float64], rate: int, seconds: float = 0.3, n_fft: int = 256, hop: int = 32
+) -> bytes:
+    """Spectrogram of the start of an impulse response as a PNG (rows: high to low
+    frequency, columns: time; 0 to -80 dB relative to the peak, dark to bright).
+
+    It shows how the speaker and the room colour the echo per frequency and how long each
+    band rings, which the broadband impulse response hides. Encoded with the stdlib
+    (PNG: https://www.w3.org/TR/png/, filter type 0 per row, zlib-compressed IDAT).
+    """
+    n = min(len(h), int(seconds * rate))
+    x = np.concatenate([np.zeros(n_fft // 2), h[:n], np.zeros(n_fft)])
+    window = np.hanning(n_fft)
+    cols = max(1, (len(x) - n_fft) // hop)
+    frames = np.stack([x[i * hop : i * hop + n_fft] * window for i in range(cols)])
+    power = np.abs(np.fft.rfft(frames, axis=1)) ** 2  # (cols, bins)
+    db = 10 * np.log10(np.maximum(power / max(float(power.max()), 1e-30), 1e-8))
+    v = np.clip((db + 80) / 80, 0, 1).T[::-1]  # (bins, cols), high frequencies on top
+    # A dark blue to yellow ramp, readable in light and dark pages.
+    rgb = np.stack([v**0.8 * 255, v * 220, (1 - v) * 110 + v * 40], axis=-1).astype(np.uint8)
+    rows = b"".join(b"\x00" + row.tobytes() for row in rgb)
+
+    def chunk(kind: bytes, data: bytes) -> bytes:
+        body = kind + data
+        return struct.pack(">I", len(data)) + body + struct.pack(">I", zlib.crc32(body))
+
+    height, width = rgb.shape[:2]
+    header = struct.pack(">IIBBBBB", width, height, 8, 2, 0, 0, 0)  # 8-bit RGB
+    return (
+        b"\x89PNG\r\n\x1a\n"
+        + chunk(b"IHDR", header)
+        + chunk(b"IDAT", zlib.compress(rows, 9))
+        + chunk(b"IEND", b"")
+    )
+
+
+def _img_spectrogram(h: npt.NDArray[np.float64], rate: int) -> str:
+    if not np.any(h):
+        return ""
+    data = base64.b64encode(spectrogram_png(h, rate)).decode()
+    return (
+        f'<img class="spec" alt="spectrogram, 0 to {rate // 2} Hz, first 300 ms" '
+        f'src="data:image/png;base64,{data}">'
+    )
+
+
 def write_report(result: ProbeResult, path: str | Path, title: str) -> Path:
-    """A self-contained HTML report: the numbers and each channel's impulse response."""
+    """A self-contained HTML report: the numbers and each channel's impulse response and
+    its spectrogram."""
     out = Path(path)
     rows = []
     for c in result.channels:
@@ -162,6 +212,7 @@ def write_report(result: ProbeResult, path: str | Path, title: str) -> Path:
     irs = "".join(
         f"<h3>Channel {c.index} ({html.escape(c.role)})</h3>"
         + _svg_ir(result.irs[:, c.index], result.rate)
+        + _img_spectrogram(result.irs[:, c.index], result.rate)
         for c in result.channels
         if result.irs.shape[0]
     )
@@ -177,13 +228,14 @@ body {{ font-family: system-ui, sans-serif; color: var(--fg); background: var(--
 table {{ border-collapse: collapse; width: 100%; }}
 td, th {{ border-bottom: 1px solid var(--line); padding: 4px 8px; text-align: left; }}
 svg {{ color: var(--fg); }}
+img.spec {{ width: 100%; height: 160px; image-rendering: pixelated; display: block; }}
 </style></head><body>
 <h1>{html.escape(title)}</h1>
 <p>Suggested echo mode: <b>{html.escape(result.suggested_mode)}</b>
 ({html.escape("; ".join(result.reasons))}). Clock drift: {drift}. Sample rate {result.rate} Hz.</p>
 <table><tr><th>ch</th><th>role</th><th>noise</th><th>delay</th><th>echo gain</th>
 <th>direct/reverb</th><th>note</th></tr>{"".join(rows)}</table>
-<h2>Impulse responses (first 300 ms, 0 to -80 dB)</h2>{irs}
+<h2>Impulse responses and spectrograms (first 300 ms, 0 to -80 dB)</h2>{irs}
 <p>Written by ral probe {__version__}.</p>
 </body></html>
 """

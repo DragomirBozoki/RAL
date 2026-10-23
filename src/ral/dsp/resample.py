@@ -8,7 +8,8 @@ as a dot product of ``K`` input samples with one of ``L`` sub-filters.
 
 Why not a library: ``samplerate`` (libsamplerate) has no wheel for CPython 3.10 on Linux
 aarch64, which is exactly the Jetson and ROS 2 Humble target, and engine ratios are fixed.
-TODO(M3): drift compensation needs a slowly varying ratio; revisit then.
+Drift compensation (a slowly varying ratio near 1) is a separate stage,
+:class:`ral.dsp.drift.DriftCorrector`, after this one.
 
 Alignment. The prototype filter is linear-phase with an odd length ``N``, so it delays the
 upsampled signal by ``D = (N - 1) / 2`` samples. The resampler compensates by reading ``D``
