@@ -13,8 +13,8 @@ Events. Partner-validated profiles need partners and stay with the maintainer.
 | 1 | Drift compensation | done |
 | 2 | Online delay tracking (GCC-PHAT) | done |
 | 3 | Health monitor | done |
-| 4 | Prometheus and OpenTelemetry export | next |
-| 5 | Local Studio UI | |
+| 4 | Prometheus and OpenTelemetry export | done |
+| 5 | Local Studio UI | next |
 | 6 | ROS 2 actions and services | |
 | 7 | Engine process split: measure, then decide | |
 | 8 | Partner-validated profiles | maintainer |
@@ -38,6 +38,11 @@ Events. Partner-validated profiles need partners and stay with the maintainer.
   `DeadChannel` event, noise floor per channel, xruns from every stream's counters,
   `DeviceLost` on a stalled capture) wired into the engine with an observe task and a
   once-a-second poll; `CaptureGraph.us_per_frame`; `Engine.health.snapshot()`.
+- **Step 4.** `ral.metrics.export`: `MetricsCollector` (health snapshot, events by type,
+  turn-latency histograms), `render_prometheus` and the `prometheus` bridge (`GET /metrics`
+  on 127.0.0.1:9464), `otlp_metrics`, `otlp_turn_trace` and the `otlp` bridge (OTLP/HTTP
+  JSON to a collector, default `http://127.0.0.1:4318`, every 10 s, plus one trace per
+  turn). Try: `ral run -b prometheus`, then `curl http://127.0.0.1:9464/metrics`.
 
 ### M3 decisions
 

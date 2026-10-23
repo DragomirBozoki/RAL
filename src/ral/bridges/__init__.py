@@ -6,6 +6,7 @@ names the bridges to start and their settings, for example::
     bridges:
       websocket: {host: 127.0.0.1, port: 8765}
       livekit: {url: "${LIVEKIT_URL}", room: lab}
+      prometheus: {port: 9464}          # metrics exporters are bridges too
 
 Built-in bridges are found by name here; plugins register more through the
 ``ral.bridges`` entry point group. Every bridge plays agent audio through the engine's
@@ -59,10 +60,24 @@ def _ros2(cfg: Mapping[str, Any]) -> Bridge:
     return Ros2Bridge.from_config(cfg)
 
 
+def _prometheus(cfg: Mapping[str, Any]) -> Bridge:
+    from ral.metrics.export import PrometheusExporter
+
+    return PrometheusExporter.from_config(cfg)
+
+
+def _otlp(cfg: Mapping[str, Any]) -> Bridge:
+    from ral.metrics.export import OtlpExporter
+
+    return OtlpExporter.from_config(cfg)
+
+
 _BUILTIN: dict[str, BridgeFactory] = {
     "websocket": _websocket,
     "livekit": _livekit,
     "ros2": _ros2,
+    "prometheus": _prometheus,
+    "otlp": _otlp,
 }
 
 
