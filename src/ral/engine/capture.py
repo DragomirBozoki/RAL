@@ -19,6 +19,7 @@ from dataclasses import dataclass
 from ral.core.processing import FrameContext, Processor
 from ral.core.protocols import ReferenceProvider
 from ral.core.types import AudioFormat, AudioFrame, ChannelMap
+from ral.dsp.lead import LeadControl, as_lead
 from ral.dsp.normalizer import Normalizer
 
 __all__ = ["CaptureGraph", "CaptureResult"]
@@ -55,7 +56,7 @@ class CaptureGraph:
         stages: Sequence[Processor],
         *,
         reference: ReferenceProvider | None = None,
-        lead_ms: int = 20,
+        lead_ms: int | LeadControl = 20,
         speaking: Callable[[int], bool] | None = None,
         session_id: str = "",
         engine_rate: int = 16_000,
@@ -63,7 +64,7 @@ class CaptureGraph:
         self.normalizer = Normalizer(in_fmt, channel_map, engine_rate)
         self.stages = list(stages)
         self.reference = reference
-        self.lead_ns = lead_ms * 1_000_000
+        self.lead = as_lead(lead_ms)
         self.speaking = speaking or (lambda _t: False)
         self.session_id = session_id
         self.frames = 0
@@ -89,7 +90,7 @@ class CaptureGraph:
         ctx = FrameContext(
             self.session_id,
             reference=(
-                self.reference.frames_until(raw.t_ns + self.lead_ns)
+                self.reference.frames_until(raw.t_ns + self.lead.ns)
                 if self.reference is not None
                 else []
             ),

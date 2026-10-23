@@ -17,7 +17,9 @@ from typing import Literal
 
 from ral.core.errors import FormatError
 from ral.core.processing import Processor
+from ral.dsp.delay import DelayTracker
 from ral.dsp.echo import ApmProcessor, DuplexGate, EchoOff, HardwareAecPassthrough, MicChoice
+from ral.dsp.lead import LeadControl, as_lead
 from ral.dsp.vad import EnergyVad
 
 __all__ = ["EchoMode", "build_capture_chain"]
@@ -36,9 +38,10 @@ def build_capture_chain(
     pipeline: Sequence[str] = ("aec", "noise_suppression", "agc", "vad"),
     *,
     mic: MicChoice = 0,
-    lead_ms: int = 20,
+    lead_ms: int | LeadControl = 20,
     mic_delay_ms: int = 0,
     vad: Processor | None = None,
+    delay_tracking: bool = False,
 ) -> list[Processor]:
     """The stages for one engine, in order.
 
@@ -46,7 +49,9 @@ def build_capture_chain(
         mode: Echo-control mode.
         pipeline: Stage names from the profile.
         mic: Mic channel for echo control.
-        lead_ms: Reference lead for ``software_ref``.
+        lead_ms: Reference lead for ``software_ref`` (a shared control, or ms).
+        delay_tracking: ``software_ref``: measure the echo delay and raise the lead when the
+            reference risks arriving late (:class:`~ral.dsp.delay.DelayTracker`).
         mic_delay_ms: Mic delay for ``loopback``.
         vad: The VAD stage to use for ``vad`` (default: :class:`EnergyVad`).
 
@@ -62,6 +67,9 @@ def build_capture_chain(
         )
     ns, hpf, agc = (stage in pipeline for stage in _APM_STAGES)
     chain: list[Processor] = []
+    lead = as_lead(lead_ms)
+    if mode == "software_ref" and delay_tracking:
+        chain.append(DelayTracker(lead, mic=mic))
     if mode in ("software_ref", "loopback"):
         chain.append(
             ApmProcessor(
@@ -70,7 +78,7 @@ def build_capture_chain(
                 noise_suppression=ns,
                 high_pass_filter=hpf,
                 auto_gain_control=agc,
-                lead_ms=lead_ms,
+                lead_ms=lead,
                 reference="channels" if mode == "loopback" else "buffer",
                 mic_delay_ms=mic_delay_ms,
             )

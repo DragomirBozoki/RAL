@@ -19,6 +19,7 @@ from ral.bench.synthetic import EchoScene
 from ral.core.events import BargeIn, EchoLeak, Event, SpeechStarted
 from ral.core.processing import Processor
 from ral.core.types import AudioFormat, AudioFrame, ChannelMap
+from ral.dsp.lead import LeadControl
 from ral.engine.capture import CaptureGraph
 from ral.metrics.selftrigger import self_trigger_rate
 from ral.playback.reference import ReferenceBuffer
@@ -67,11 +68,12 @@ def run_scene(
     software_ref: bool,
     playback_s: Sequence[tuple[float, float]] | None = None,
     user_speech_s: Sequence[tuple[float, float]] = (),
-    lead_ms: int = 20,
+    lead_ms: int | LeadControl = 20,
     render_ahead_ms: int = 100,
     on_frame: Callable[[AudioFrame], None] | None = None,
     loopback_ms: float | None = None,
     capture: tuple[npt.NDArray[np.float64], Sequence[str]] | None = None,
+    dac_error_ms: float = 0.0,
 ) -> SceneRun:
     """Process ``scene`` and collect the clean stream and the events.
 
@@ -88,6 +90,7 @@ def run_scene(
             on the mics' clock, ``loopback_ms`` late (for the ``loopback`` mode).
         capture: Use these capture channels ``(samples, channels)`` and roles instead of
             the scene's single mic (array devices, hardware-processed channels).
+        dac_error_ms: Make the reference's DAC times this late (a misreported latency).
     """
     rate = scene.rate
     if capture is not None:
@@ -130,7 +133,10 @@ def run_scene(
     events: list[Event] = []
     for k in range(frames):
         while ref is not None and rendered < min(k + ahead, frames):
-            ref.push(far[rendered * n : (rendered + 1) * n, None], T0 + rendered * FRAME_NS)
+            ref.push(
+                far[rendered * n : (rendered + 1) * n, None],
+                T0 + rendered * FRAME_NS + int(dac_error_ms * 1e6),
+            )
             rendered += 1
         frame = AudioFrame(
             mic[k * n : (k + 1) * n].copy(), cap_fmt, cmap, T0 + k * FRAME_NS, k, "mic"

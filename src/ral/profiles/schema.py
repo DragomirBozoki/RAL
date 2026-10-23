@@ -123,6 +123,8 @@ class EchoConfig(_Strict):
     """Sink clock minus mic clock, in ppm (from ``ral probe``): the start value of drift
     compensation until RAL has measured it."""
     drift_compensation: bool = True
+    delay_tracking: bool = True
+    """``software_ref``: measure the echo delay (GCC-PHAT) and raise the lead if needed."""
     """``software_ref``: resample the reference onto the mic clock (DESIGN 5)."""
 
     _mode_off = field_validator("mode", mode="before")(classmethod(lambda cls, v: _off(v)))

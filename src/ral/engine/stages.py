@@ -8,6 +8,7 @@ from collections.abc import Callable
 from ral.core.errors import RalError
 from ral.core.processing import Processor
 from ral.dsp.bargein import BargeInDetector
+from ral.dsp.lead import LeadControl
 from ral.dsp.pipeline import build_capture_chain
 from ral.dsp.vad import EnergyVad
 from ral.profiles.schema import Profile, VadConfig
@@ -34,7 +35,9 @@ def make_vad(v: VadConfig) -> Processor:
 
 
 def build_stages(
-    profile: Profile, current_tag: Callable[[], str | None] | None = None
+    profile: Profile,
+    current_tag: Callable[[], str | None] | None = None,
+    lead: LeadControl | None = None,
 ) -> list[Processor]:
     """Echo control, noise, gain, VAD and barge-in as the profile describes them."""
     p = profile
@@ -42,7 +45,8 @@ def build_stages(
         p.echo.mode,
         p.pipeline,
         mic=p.echo.mic,
-        lead_ms=p.echo.lead_ms,
+        lead_ms=lead if lead is not None else p.echo.lead_ms,
+        delay_tracking=p.echo.delay_tracking,
         mic_delay_ms=p.echo.mic_delay_ms,
         vad=make_vad(p.vad),
     )

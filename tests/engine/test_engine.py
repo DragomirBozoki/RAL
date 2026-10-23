@@ -68,8 +68,15 @@ async def test_playback_goes_through_the_sink_and_the_reference(tmp_path: Path) 
     assert wav_frames(tmp_path / "out.wav") >= 16000
     assert isinstance(await started.get(), ev.PlaybackStarted)
     assert engine.graph is not None
-    apm = engine.graph.stages[0]
-    assert apm.reference_frames > 0  # type: ignore[attr-defined]
+    from ral.dsp.delay import DelayTracker
+    from ral.dsp.echo import ApmProcessor
+
+    kinds = [type(s) for s in engine.graph.stages]
+    assert kinds[:2] == [DelayTracker, ApmProcessor]  # delay tracking is on by default
+    apm = engine.graph.stages[1]
+    assert isinstance(apm, ApmProcessor)
+    assert apm.reference_frames > 0
+    assert apm.lead is engine.lead  # one lead shared by graph, tracker and APM
 
 
 async def test_realtime_run_paces_and_stops_cleanly(tmp_path: Path) -> None:

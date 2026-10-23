@@ -32,6 +32,7 @@ from ral.core.events import BargeIn, Event, RecordingStarted, RecordingStopped
 from ral.core.protocols import AudioSink, AudioSource
 from ral.core.types import AudioFormat, AudioFrame, ChannelMap, ChannelRole
 from ral.dsp.drift import DriftEstimator
+from ral.dsp.lead import LeadControl
 from ral.engine.capture import CaptureGraph, CaptureResult
 from ral.engine.stages import build_stages
 from ral.metrics.latency import LatencyTracker
@@ -179,15 +180,18 @@ class Engine:
             framer.rate_source = self.capture_estimator.rate_hz
             self.reference.capture_estimator = self.capture_estimator
         playback = self.playback
+        self.lead = LeadControl(p.echo.lead_ms, p.echo.lead_ms)
         stages = build_stages(
-            p, current_tag=lambda: playback.current.tag if playback.current else None
+            p,
+            current_tag=lambda: playback.current.tag if playback.current else None,
+            lead=self.lead,
         )
         self.graph = CaptureGraph(
             source.fmt,
             source.channel_map,
             stages,
             reference=self.reference,
-            lead_ms=p.echo.lead_ms,
+            lead_ms=self.lead,
             speaking=playback.speaking_at,
             session_id=self.session_id,
             engine_rate=self.engine_fmt.sample_rate,

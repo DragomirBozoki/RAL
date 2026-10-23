@@ -11,8 +11,8 @@ Events. Partner-validated profiles need partners and stay with the maintainer.
 | Step | What | Status |
 |---|---|---|
 | 1 | Drift compensation | done |
-| 2 | Online delay tracking (GCC-PHAT) | next |
-| 3 | Health monitor | |
+| 2 | Online delay tracking (GCC-PHAT) | done |
+| 3 | Health monitor | next |
 | 4 | Prometheus and OpenTelemetry export | |
 | 5 | Local Studio UI | |
 | 6 | ROS 2 actions and services | |
@@ -29,6 +29,11 @@ Events. Partner-validated profiles need partners and stay with the maintainer.
   `rate_source`, closing the M1 TODO about re-anchoring steps. `ral.bench.drift` and
   `spikes/drift_erle.py`: with the speaker 500 ppm fast, ERLE over the last 20 s of a
   minute is 31.5 dB without compensation and 43.0 dB with it.
+- **Step 2.** `ral.dsp.delay` (`gcc_phat`, `DelayTracker`) and `ral.dsp.lead.LeadControl`
+  shared by the capture graph, the APM stage and the tracker; `echo.delay_tracking`
+  (default on in `software_ref`); `run_scene(dac_error_ms=...)`. Delays of +35, +5 and -45 ms
+  are measured to 0.2 ms; with DAC estimates 50 ms late, ERLE recovers from under 15 dB to
+  over 30 dB.
 
 ### M3 decisions
 

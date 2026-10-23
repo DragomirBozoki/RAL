@@ -31,6 +31,7 @@ from ral.core.convert import float32_to_int16, int16_to_float32
 from ral.core.errors import FormatError, MissingDependencyError
 from ral.core.processing import FrameContext
 from ral.core.types import AudioFormat, AudioFrame, ChannelMap, ChannelRole
+from ral.dsp.lead import LeadControl, as_lead
 from ral.dsp.levels import SILENCE_DB, db_to_gain, rms_db
 
 __all__ = [
@@ -129,7 +130,7 @@ class ApmProcessor:
         noise_suppression: bool = False,
         high_pass_filter: bool = False,
         auto_gain_control: bool = False,
-        lead_ms: int = 20,
+        lead_ms: int | LeadControl = 20,
         reference: Literal["buffer", "channels"] = "buffer",
         mic_delay_ms: int = 0,
     ) -> None:
@@ -143,7 +144,7 @@ class ApmProcessor:
             raise MissingDependencyError("livekit", "dsp", "WebRTC echo control") from None
         self._rtc = rtc
         self.mic = mic
-        self.lead_ms = lead_ms
+        self.lead = as_lead(lead_ms)
         self.reference = reference
         self.mic_delay_ms = mic_delay_ms if reference == "channels" else 0
         self._flags = {
@@ -168,6 +169,11 @@ class ApmProcessor:
         self._silence = np.zeros((0, 1), np.float32)
         self._delay_line: npt.NDArray[np.float32] = np.zeros((0, 1), np.float32)
         self.reset()
+
+    @property
+    def lead_ms(self) -> int:
+        """The current reference lead (it may be raised by delay tracking)."""
+        return self.lead.ms
 
     @property
     def echo_cancellation(self) -> bool:
