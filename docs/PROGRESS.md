@@ -12,8 +12,8 @@ Events. Partner-validated profiles need partners and stay with the maintainer.
 |---|---|---|
 | 1 | Drift compensation | done |
 | 2 | Online delay tracking (GCC-PHAT) | done |
-| 3 | Health monitor | next |
-| 4 | Prometheus and OpenTelemetry export | |
+| 3 | Health monitor | done |
+| 4 | Prometheus and OpenTelemetry export | next |
 | 5 | Local Studio UI | |
 | 6 | ROS 2 actions and services | |
 | 7 | Engine process split: measure, then decide | |
@@ -34,6 +34,10 @@ Events. Partner-validated profiles need partners and stay with the maintainer.
   (default on in `software_ref`); `run_scene(dac_error_ms=...)`. Delays of +35, +5 and -45 ms
   are measured to 0.2 ms; with DAC estimates 50 ms late, ERLE recovers from under 15 dB to
   over 30 dB.
+- **Step 3.** `ral.metrics.health.HealthMonitor` (clipping, dead channels with the new
+  `DeadChannel` event, noise floor per channel, xruns from every stream's counters,
+  `DeviceLost` on a stalled capture) wired into the engine with an observe task and a
+  once-a-second poll; `CaptureGraph.us_per_frame`; `Engine.health.snapshot()`.
 
 ### M3 decisions
 

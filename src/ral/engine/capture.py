@@ -13,6 +13,7 @@ all run exactly the same code.
 
 from __future__ import annotations
 
+import time
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 
@@ -68,6 +69,13 @@ class CaptureGraph:
         self.speaking = speaking or (lambda _t: False)
         self.session_id = session_id
         self.frames = 0
+        self.processing_ns = 0
+        """Total time spent in the stages (for the cost per frame)."""
+
+    @property
+    def us_per_frame(self) -> float:
+        """Average processing time of one engine frame, in microseconds."""
+        return self.processing_ns / max(1, self.frames) / 1e3
 
     @property
     def engine_fmt(self) -> AudioFormat:
@@ -97,7 +105,9 @@ class CaptureGraph:
             robot_speaking=self.speaking(raw.t_ns),
         )
         clean = raw
+        start = time.perf_counter_ns()
         for stage in self.stages:
             clean = stage.process(clean, ctx)
+        self.processing_ns += time.perf_counter_ns() - start
         self.frames += 1
         return CaptureResult(raw, clean, ctx)

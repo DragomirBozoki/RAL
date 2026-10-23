@@ -516,7 +516,7 @@ One MCAP file per session with channels for raw mic, reference, processed audio,
 | ERLE | Echo return loss enhancement in dB during robot-only speech | Standard AEC quality measure |
 | Barge-in precision and recall | Against labelled sessions | Interrupts when it should, ignores itself |
 | WER (optional) | Word error rate against reference transcripts | Language-neutral; the language is the developer's choice |
-| Health | Xruns per hour, clipping share, dead channels, noise-floor drift | Catches hardware problems before users do |
+| Health | Xruns per hour, clipping share, dead channels, noise-floor drift. M3 (`ral.metrics.health.HealthMonitor`, in every engine): `Clipping` when over 0.1 % of a second is at full scale, `DeadChannel` after 5 s below -100 dBFS, noise floor per channel as the lowest one-second level of the last 30 s (timed by the audio, so replays behave like live runs); once a second `Xrun` from every stream's counters and `DeviceLost` after 2 s without capture; `snapshot()` adds drift, echo delay, lead, DSP cost per frame and median turn latency | Catches hardware problems before users do |
 
 ### Benchmarks without a robot
 

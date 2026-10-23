@@ -35,6 +35,7 @@ from ral.dsp.drift import DriftEstimator
 from ral.dsp.lead import LeadControl
 from ral.engine.capture import CaptureGraph, CaptureResult
 from ral.engine.stages import build_stages
+from ral.metrics.health import HealthMonitor
 from ral.metrics.latency import LatencyTracker
 from ral.playback.reference import ReferenceBuffer
 from ral.playback.service import PlaybackQueue
@@ -127,6 +128,8 @@ class Engine:
         self._remove_latency: Any = None
         self._ros2: Any = None
         self.capture_estimator: DriftEstimator | None = None
+        self.health: HealthMonitor | None = None
+        self._health_tasks: list[asyncio.Task[None]] = []
         self.latency = LatencyTracker()
         """Per-turn latency; replaced with a publishing tracker on start."""
         self.capture_done = asyncio.Event()
@@ -197,6 +200,7 @@ class Engine:
             engine_rate=self.engine_fmt.sample_rate,
         )
         self._remove_listener = self.bus.add_listener(self._on_event)
+        self._start_health(source)
         loop = self._loop
 
         def publish_later(event: Event) -> None:
@@ -229,6 +233,12 @@ class Engine:
             await self._stop_recorder()
 
     async def _stop(self) -> None:
+        for task in self._health_tasks:
+            task.cancel()
+        for task in self._health_tasks:
+            with contextlib.suppress(asyncio.CancelledError):
+                await task
+        self._health_tasks = []
         if self._capture_task is not None:
             self._capture_task.cancel()
             with contextlib.suppress(asyncio.CancelledError):
@@ -391,6 +401,74 @@ class Engine:
                 f"with {channels} channels; list one role per channel."
             )
         return ChannelMap.from_names(cfg.channels)
+
+    # Health (DESIGN section 8)
+
+    def _start_health(self, source: AudioSource) -> None:
+        loop = asyncio.get_running_loop()
+
+        def publish(event: Event) -> None:
+            loop.call_soon(self.bus.publish, event)
+
+        self.health = HealthMonitor(
+            self.session_id,
+            publish=publish,
+            counters=self._xrun_counters,
+            device_id=str(getattr(source, "clock_id", "") or self.profile.capture.backend),
+            extra=self._health_extra,
+        )
+        health = self.health
+        frames = self.subscribe(maxsize=400)
+
+        async def observe() -> None:
+            async for result in frames:
+                health.observe(result.raw.data, result.raw.t_ns, result.raw.fmt.frame_ns)
+
+        async def poll() -> None:
+            while True:
+                await asyncio.sleep(1.0)
+                if not self.capture_done.is_set():  # a file that ended is not a lost device
+                    health.poll()
+
+        self._health_tasks = [
+            asyncio.create_task(observe(), name="ral-health-observe"),
+            asyncio.create_task(poll(), name="ral-health-poll"),
+        ]
+
+    def _xrun_counters(self) -> dict[str, int]:
+        out: dict[str, int] = {"engine.dropped": self.input_overruns}
+        framer = getattr(self.source, "framer", None)
+        if framer is not None:
+            out["capture.overrun"] = framer.ring.overruns
+            out["capture.lost_frames"] = framer.lost_frames
+        for name, obj, attr in (
+            ("capture.overflow", self.source, "input_overflows"),
+            ("playback.underflow", self.sink, "output_underflows"),
+        ):
+            value = getattr(obj, attr, None)
+            if isinstance(value, int):
+                out[name] = value
+        if self.reference is not None:
+            out["reference.overrun"] = self.reference.overruns
+        return out
+
+    def _health_extra(self) -> dict[str, float | None]:
+        delay = next(
+            (
+                s.delay_ms
+                for s in (self.graph.stages if self.graph else [])
+                if hasattr(s, "delay_ms")
+            ),
+            None,
+        )
+        stats = {s.name: s.median_ms for s in self.latency.summary()}
+        return {
+            "drift_ppm": self.drift_ppm,
+            "echo_delay_ms": delay,
+            "lead_ms": float(self.lead.ms) if hasattr(self, "lead") else None,
+            "dsp_us_per_frame": self.graph.us_per_frame if self.graph else None,
+            "turn_latency_median_ms": stats.get("total"),
+        }
 
     # Capture and DSP
 
